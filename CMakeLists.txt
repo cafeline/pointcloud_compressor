@@ -1,0 +1,124 @@
+cmake_minimum_required(VERSION 3.8)
+project(pointcloud_compressor)
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# Find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(Eigen3 REQUIRED)
+
+# ROS2 dependencies
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(builtin_interfaces REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+
+# Include directories
+include_directories(
+  include
+  ${EIGEN3_INCLUDE_DIRS}
+)
+
+# Generate messages
+set(msg_files
+  "msg/CompressionSettings.msg"
+  "msg/PatternDictionary.msg"
+  "msg/CompressedPointCloud.msg"
+)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  ${msg_files}
+  DEPENDENCIES builtin_interfaces std_msgs geometry_msgs
+)
+
+# Core library source files
+set(CORE_SOURCES
+  src/io/PcdIO.cpp
+  src/model/VoxelGrid.cpp
+  src/core/VoxelProcessor.cpp
+  src/core/PatternDictionaryBuilder.cpp
+  src/core/PatternEncoder.cpp
+  src/core/PointCloudCompressor.cpp
+)
+
+# Create core library
+add_library(${PROJECT_NAME}_core ${CORE_SOURCES})
+target_include_directories(${PROJECT_NAME}_core PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(${PROJECT_NAME}_core PUBLIC cxx_std_17)
+
+# Main executable
+add_executable(${PROJECT_NAME}_cli src/pointcloud_compressor.cpp)
+target_link_libraries(${PROJECT_NAME}_cli ${PROJECT_NAME}_core)
+
+# ROS2 Node executable
+add_executable(${PROJECT_NAME}_node src/ros/pointcloud_compressor_node.cpp)
+target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME}_core)
+ament_target_dependencies(${PROJECT_NAME}_node
+  rclcpp
+  std_msgs
+  sensor_msgs
+  geometry_msgs
+  builtin_interfaces
+)
+
+# Ensure message headers are generated before building the node
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(${PROJECT_NAME}_node "${cpp_typesupport_target}")
+
+# Installation
+install(TARGETS ${PROJECT_NAME}_cli ${PROJECT_NAME}_node
+  DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY include/
+  DESTINATION include/)
+
+# Install launch files
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+# Install config files
+install(DIRECTORY config
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+# Testing
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  
+  # Test data directory
+  set(TEST_DATA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/test/test_data")
+  
+  # PCD I/O Test
+  ament_add_gtest(test_pcd_io test/test_pcd_io.cpp)
+  target_link_libraries(test_pcd_io ${PROJECT_NAME}_core)
+  target_compile_definitions(test_pcd_io PRIVATE TEST_DATA_DIR="${TEST_DATA_DIR}")
+  
+  # Voxel Processor Test
+  ament_add_gtest(test_voxel_processor test/test_voxel_processor.cpp)
+  target_link_libraries(test_voxel_processor ${PROJECT_NAME}_core)
+  
+  # Dictionary Builder Test
+  ament_add_gtest(test_dictionary_builder test/test_dictionary_builder.cpp)
+  target_link_libraries(test_dictionary_builder ${PROJECT_NAME}_core)
+  
+  # Pattern Encoder Test
+  ament_add_gtest(test_pattern_encoder test/test_pattern_encoder.cpp)
+  target_link_libraries(test_pattern_encoder ${PROJECT_NAME}_core)
+  
+  # Integration Test
+  ament_add_gtest(test_integration test/test_integration.cpp)
+  target_link_libraries(test_integration ${PROJECT_NAME}_core)
+  target_compile_definitions(test_integration PRIVATE TEST_DATA_DIR="${TEST_DATA_DIR}")
+endif()
+
+# Export dependencies
+ament_export_dependencies(rosidl_default_runtime)
+
+ament_package()

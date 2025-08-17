@@ -1,0 +1,98 @@
+#ifndef POINTCLOUD_COMPRESSOR_POINT_CLOUD_COMPRESSOR_HPP
+#define POINTCLOUD_COMPRESSOR_POINT_CLOUD_COMPRESSOR_HPP
+
+#include <string>
+#include <memory>
+#include "pointcloud_compressor/io/PcdIO.hpp"
+#include "pointcloud_compressor/core/VoxelProcessor.hpp"
+#include "pointcloud_compressor/core/PatternDictionaryBuilder.hpp"
+#include "pointcloud_compressor/core/PatternEncoder.hpp"
+
+namespace pointcloud_compressor {
+
+struct CompressionSettings {
+    float voxel_size = 0.01f;
+    int block_size = 8;
+    bool use_8bit_indices = false;
+    std::string temp_directory = "temp";
+    
+    CompressionSettings() = default;
+    CompressionSettings(float vs, int bs, bool use8bit = false) 
+        : voxel_size(vs), block_size(bs), use_8bit_indices(use8bit) {}
+};
+
+struct CompressionResult {
+    bool success = false;
+    float compression_ratio = 1.0f;
+    size_t original_size = 0;
+    size_t compressed_size = 0;
+    size_t num_blocks = 0;
+    size_t num_unique_patterns = 0;
+    std::string error_message;
+};
+
+class PointCloudCompressor {
+public:
+    // Constructor
+    PointCloudCompressor(const CompressionSettings& settings = CompressionSettings());
+    
+    // Destructor
+    ~PointCloudCompressor();
+    
+    // Main compression function
+    CompressionResult compress(const std::string& input_pcd_file, 
+                              const std::string& output_prefix);
+    
+    // Main decompression function
+    bool decompress(const std::string& compressed_prefix, 
+                   const std::string& output_pcd_file);
+    
+    // Find optimal compression settings
+    CompressionSettings findOptimalSettings(const std::string& input_pcd_file,
+                                           float min_voxel_size = 0.005f,
+                                           float max_voxel_size = 0.05f);
+    
+    // Update settings
+    void updateSettings(const CompressionSettings& settings);
+    CompressionSettings getSettings() const;
+    
+    // Utility functions
+    bool validateInputFile(const std::string& filename);
+    size_t estimateMemoryUsage(const std::string& input_pcd_file);
+    
+private:
+    CompressionSettings settings_;
+    std::unique_ptr<VoxelProcessor> voxel_processor_;
+    std::unique_ptr<PatternDictionaryBuilder> dictionary_builder_;
+    std::unique_ptr<PatternEncoder> pattern_encoder_;
+    
+    // Internal compression steps
+    bool loadPointCloud(const std::string& filename, PointCloud& cloud);
+    bool voxelizeAndDivide(const PointCloud& cloud, std::vector<VoxelBlock>& blocks);
+    bool buildDictionaryAndEncode(const std::vector<VoxelBlock>& blocks,
+                                 std::vector<uint16_t>& indices);
+    bool saveCompressionData(const std::string& output_prefix,
+                           const std::vector<uint16_t>& indices,
+                           const VoxelGrid& grid);
+    
+    // Internal decompression steps
+    bool loadCompressionData(const std::string& compressed_prefix,
+                           std::vector<uint16_t>& indices,
+                           VoxelGrid& grid);
+    bool reconstructPointCloud(const std::vector<uint16_t>& indices,
+                             const VoxelGrid& grid,
+                             PointCloud& cloud);
+    
+    // File management
+    void initializeTempPaths(const std::string& output_prefix);
+    void cleanupTempFiles();
+    
+    std::string getBlocksFilename(const std::string& prefix) const;
+    std::string getDictionaryFilename(const std::string& prefix) const;
+    std::string getIndicesFilename(const std::string& prefix) const;
+    std::string getMetadataFilename(const std::string& prefix) const;
+};
+
+} // namespace pointcloud_compressor
+
+#endif // POINTCLOUD_COMPRESSOR_POINT_CLOUD_COMPRESSOR_HPP
