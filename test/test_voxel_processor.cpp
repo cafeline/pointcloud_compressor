@@ -213,6 +213,83 @@ TEST_F(VoxelProcessorTest, HandleBoundaryBlocks) {
     EXPECT_EQ(blocks.size(), x_blocks * y_blocks * z_blocks);
 }
 
+// Test voxel occupancy threshold - single point per voxel (should not be occupied with threshold > 1)
+TEST_F(VoxelProcessorTest, VoxelOccupancyThresholdSinglePoint) {
+    int min_points_threshold = 2;  // Require at least 2 points to mark voxel as occupied
+    VoxelProcessor processor(voxel_size, block_size, min_points_threshold);
+    
+    // Create a point cloud with single points in different voxels
+    PointCloud cloud;
+    cloud.points.emplace_back(0.005f, 0.005f, 0.005f);  // Center of first voxel
+    cloud.points.emplace_back(0.015f, 0.005f, 0.005f);  // Center of second voxel
+    cloud.points.emplace_back(0.005f, 0.015f, 0.005f);  // Center of third voxel
+    
+    VoxelGrid grid;
+    bool result = processor.voxelizePointCloud(cloud, grid);
+    
+    EXPECT_TRUE(result);
+    // With threshold=2, no voxels should be marked as occupied since each has only 1 point
+    EXPECT_EQ(grid.getOccupiedVoxelCount(), 0);
+}
+
+// Test voxel occupancy threshold - multiple points per voxel (should be occupied with threshold met)
+TEST_F(VoxelProcessorTest, VoxelOccupancyThresholdMultiplePoints) {
+    int min_points_threshold = 3;  // Require at least 3 points to mark voxel as occupied
+    VoxelProcessor processor(voxel_size, block_size, min_points_threshold);
+    
+    // Create a point cloud with multiple points in the same voxel
+    PointCloud cloud;
+    // 4 points in the same voxel (first voxel: 0.0-0.01 range)
+    cloud.points.emplace_back(0.001f, 0.001f, 0.001f);
+    cloud.points.emplace_back(0.002f, 0.002f, 0.002f);
+    cloud.points.emplace_back(0.003f, 0.003f, 0.003f);
+    cloud.points.emplace_back(0.004f, 0.004f, 0.004f);
+    
+    // 2 points in another voxel (second voxel: 0.01-0.02 range)
+    cloud.points.emplace_back(0.011f, 0.001f, 0.001f);
+    cloud.points.emplace_back(0.012f, 0.002f, 0.002f);
+    
+    VoxelGrid grid;
+    bool result = processor.voxelizePointCloud(cloud, grid);
+    
+    EXPECT_TRUE(result);
+    // With threshold=3, only the first voxel (4 points) should be occupied
+    // The second voxel (2 points) should not be occupied
+    EXPECT_EQ(grid.getOccupiedVoxelCount(), 1);
+}
+
+// Test voxel occupancy threshold - default behavior (threshold = 1)
+TEST_F(VoxelProcessorTest, VoxelOccupancyDefaultThreshold) {
+    // Default threshold should be 1 (any point marks voxel as occupied)
+    VoxelProcessor processor(voxel_size, block_size);  // No threshold specified, should default to 1
+    
+    PointCloud cloud;
+    cloud.points.emplace_back(0.005f, 0.005f, 0.005f);  // Single point
+    
+    VoxelGrid grid;
+    bool result = processor.voxelizePointCloud(cloud, grid);
+    
+    EXPECT_TRUE(result);
+    // With default threshold=1, the voxel should be occupied
+    EXPECT_EQ(grid.getOccupiedVoxelCount(), 1);
+}
+
+// Test voxel occupancy threshold - zero threshold (should behave like threshold=1)
+TEST_F(VoxelProcessorTest, VoxelOccupancyZeroThreshold) {
+    int min_points_threshold = 0;  // Zero threshold should behave like 1
+    VoxelProcessor processor(voxel_size, block_size, min_points_threshold);
+    
+    PointCloud cloud;
+    cloud.points.emplace_back(0.005f, 0.005f, 0.005f);  // Single point
+    
+    VoxelGrid grid;
+    bool result = processor.voxelizePointCloud(cloud, grid);
+    
+    EXPECT_TRUE(result);
+    // With threshold=0 (treated as 1), the voxel should be occupied
+    EXPECT_EQ(grid.getOccupiedVoxelCount(), 1);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

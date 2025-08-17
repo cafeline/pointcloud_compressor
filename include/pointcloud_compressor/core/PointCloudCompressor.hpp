@@ -3,7 +3,7 @@
 
 #include <string>
 #include <memory>
-#include "pointcloud_compressor/io/PcdIO.hpp"
+#include "pointcloud_compressor/io/PointCloudIO.hpp"
 #include "pointcloud_compressor/core/VoxelProcessor.hpp"
 #include "pointcloud_compressor/core/PatternDictionaryBuilder.hpp"
 #include "pointcloud_compressor/core/PatternEncoder.hpp"
@@ -14,11 +14,12 @@ struct CompressionSettings {
     float voxel_size = 0.01f;
     int block_size = 8;
     bool use_8bit_indices = false;
+    int min_points_threshold = 1;
     std::string temp_directory = "temp";
     
     CompressionSettings() = default;
-    CompressionSettings(float vs, int bs, bool use8bit = false) 
-        : voxel_size(vs), block_size(bs), use_8bit_indices(use8bit) {}
+    CompressionSettings(float vs, int bs, bool use8bit = false, int min_pts = 1) 
+        : voxel_size(vs), block_size(bs), use_8bit_indices(use8bit), min_points_threshold(min_pts) {}
 };
 
 struct CompressionResult {
@@ -29,6 +30,20 @@ struct CompressionResult {
     size_t num_blocks = 0;
     size_t num_unique_patterns = 0;
     std::string error_message;
+    
+    // Additional data for ROS message generation
+    std::vector<uint16_t> block_indices;
+    VoxelGrid voxel_grid;
+    std::vector<std::vector<uint8_t>> pattern_dictionary;
+    struct {
+        double x, y, z;
+    } grid_dimensions;
+    struct {
+        double x, y, z;
+    } grid_origin;
+    struct {
+        int x, y, z;
+    } blocks_count;
 };
 
 class PointCloudCompressor {
@@ -40,15 +55,15 @@ public:
     ~PointCloudCompressor();
     
     // Main compression function
-    CompressionResult compress(const std::string& input_pcd_file, 
+    CompressionResult compress(const std::string& input_file, 
                               const std::string& output_prefix);
     
     // Main decompression function
     bool decompress(const std::string& compressed_prefix, 
-                   const std::string& output_pcd_file);
+                   const std::string& output_file);
     
     // Find optimal compression settings
-    CompressionSettings findOptimalSettings(const std::string& input_pcd_file,
+    CompressionSettings findOptimalSettings(const std::string& input_file,
                                            float min_voxel_size = 0.005f,
                                            float max_voxel_size = 0.05f);
     
@@ -58,7 +73,7 @@ public:
     
     // Utility functions
     bool validateInputFile(const std::string& filename);
-    size_t estimateMemoryUsage(const std::string& input_pcd_file);
+    size_t estimateMemoryUsage(const std::string& input_file);
     
 private:
     CompressionSettings settings_;

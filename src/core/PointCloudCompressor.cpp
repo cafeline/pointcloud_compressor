@@ -2,32 +2,33 @@
 #include <filesystem>
 #include <iostream>
 #include <fstream>
+#include <cmath>
 
 namespace pointcloud_compressor {
 
 PointCloudCompressor::PointCloudCompressor(const CompressionSettings& settings)
     : settings_(settings) {
-    voxel_processor_ = std::make_unique<VoxelProcessor>(settings_.voxel_size, settings_.block_size);
+    voxel_processor_ = std::make_unique<VoxelProcessor>(settings_.voxel_size, settings_.block_size, settings_.min_points_threshold);
     dictionary_builder_ = std::make_unique<PatternDictionaryBuilder>();
     pattern_encoder_ = std::make_unique<PatternEncoder>();
 }
 
 PointCloudCompressor::~PointCloudCompressor() {}
 
-CompressionResult PointCloudCompressor::compress(const std::string& input_pcd_file, 
+CompressionResult PointCloudCompressor::compress(const std::string& input_file, 
                                                 const std::string& output_prefix) {
     CompressionResult result;
     
     // Validate input
-    if (!validateInputFile(input_pcd_file)) {
-        result.error_message = "Invalid input file: " + input_pcd_file;
+    if (!validateInputFile(input_file)) {
+        result.error_message = "Invalid input file: " + input_file;
         return result;
     }
     
     try {
         // Step 1: Load point cloud
         PointCloud cloud;
-        if (!loadPointCloud(input_pcd_file, cloud)) {
+        if (!loadPointCloud(input_file, cloud)) {
             result.error_message = "Failed to load point cloud";
             return result;
         }
@@ -52,12 +53,44 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_pcd_fi
         
         result.num_unique_patterns = dictionary_builder_->getUniquePatternCount();
         
-        // Step 4: Save compressed data
+        // Step 4: Save compressed data  
         VoxelGrid dummy_grid; // TODO: Save actual grid metadata
         if (!saveCompressionData(output_prefix, indices, dummy_grid)) {
             result.error_message = "Failed to save compressed data";
             return result;
         }
+        
+        // Store actual compression data for ROS message
+        result.block_indices = indices;
+        
+        // Calculate basic grid information from point cloud bounds
+        if (!cloud.points.empty()) {
+            float min_x = cloud.points[0].x, max_x = cloud.points[0].x;
+            float min_y = cloud.points[0].y, max_y = cloud.points[0].y;
+            float min_z = cloud.points[0].z, max_z = cloud.points[0].z;
+            
+            for (const auto& point : cloud.points) {
+                min_x = std::min(min_x, point.x);
+                max_x = std::max(max_x, point.x);
+                min_y = std::min(min_y, point.y);
+                max_y = std::max(max_y, point.y);
+                min_z = std::min(min_z, point.z);
+                max_z = std::max(max_z, point.z);
+            }
+            
+            result.grid_dimensions.x = max_x - min_x;
+            result.grid_dimensions.y = max_y - min_y;
+            result.grid_dimensions.z = max_z - min_z;
+            result.grid_origin.x = min_x;
+            result.grid_origin.y = min_y;
+            result.grid_origin.z = min_z;
+        }
+        
+        // Calculate blocks count (simplified)
+        int blocks_per_dim = static_cast<int>(std::ceil(std::cbrt(blocks.size())));
+        result.blocks_count.x = blocks_per_dim;
+        result.blocks_count.y = blocks_per_dim;
+        result.blocks_count.z = std::max(1, static_cast<int>(blocks.size()) / (blocks_per_dim * blocks_per_dim));
         
         // Calculate compression ratio
         result.compressed_size = indices.size() * (settings_.use_8bit_indices ? 1 : 2);
@@ -75,7 +108,7 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_pcd_fi
 }
 
 bool PointCloudCompressor::decompress(const std::string& compressed_prefix, 
-                                     const std::string& output_pcd_file) {
+                                     const std::string& output_file) {
     try {
         // Step 1: Load compression data
         std::vector<uint16_t> indices;
@@ -93,7 +126,7 @@ bool PointCloudCompressor::decompress(const std::string& compressed_prefix,
         }
         
         // Step 3: Save reconstructed point cloud
-        return PcdIO::writePcdFile(output_pcd_file, cloud);
+        return PointCloudIO::savePointCloud(output_file, cloud);
         
     } catch (const std::exception& e) {
         std::cerr << "Exception during decompression: " << e.what() << std::endl;
@@ -101,11 +134,11 @@ bool PointCloudCompressor::decompress(const std::string& compressed_prefix,
     }
 }
 
-CompressionSettings PointCloudCompressor::findOptimalSettings(const std::string& input_pcd_file,
+CompressionSettings PointCloudCompressor::findOptimalSettings(const std::string& input_file,
                                                             float min_voxel_size,
                                                             float max_voxel_size) {
     PointCloud cloud;
-    if (!loadPointCloud(input_pcd_file, cloud)) {
+    if (!loadPointCloud(input_file, cloud)) {
         return settings_;  // Return current settings if loading fails
     }
     
@@ -131,14 +164,12 @@ CompressionSettings PointCloudCompressor::getSettings() const {
 }
 
 bool PointCloudCompressor::validateInputFile(const std::string& filename) {
-    return std::filesystem::exists(filename) && 
-           std::filesystem::is_regular_file(filename) &&
-           filename.substr(filename.find_last_of(".") + 1) == "pcd";
+    return PointCloudIO::validateFile(filename);
 }
 
-size_t PointCloudCompressor::estimateMemoryUsage(const std::string& input_pcd_file) {
+size_t PointCloudCompressor::estimateMemoryUsage(const std::string& input_file) {
     PointCloud cloud;
-    if (!loadPointCloud(input_pcd_file, cloud)) {
+    if (!loadPointCloud(input_file, cloud)) {
         return 0;
     }
     
@@ -152,7 +183,7 @@ size_t PointCloudCompressor::estimateMemoryUsage(const std::string& input_pcd_fi
 
 // Private methods
 bool PointCloudCompressor::loadPointCloud(const std::string& filename, PointCloud& cloud) {
-    return PcdIO::readPcdFile(filename, cloud);
+    return PointCloudIO::loadPointCloud(filename, cloud);
 }
 
 bool PointCloudCompressor::voxelizeAndDivide(const PointCloud& cloud, std::vector<VoxelBlock>& blocks) {

@@ -5,11 +5,14 @@
 #include <limits>
 #include <fstream>
 #include <iostream>
+#include <map>
+#include <tuple>
 
 namespace pointcloud_compressor {
 
-VoxelProcessor::VoxelProcessor(float voxel_size, int block_size)
-    : voxel_size_(voxel_size), block_size_(block_size) {}
+VoxelProcessor::VoxelProcessor(float voxel_size, int block_size, int min_points_threshold)
+    : voxel_size_(voxel_size), block_size_(block_size), 
+      min_points_threshold_(std::max(1, min_points_threshold)) {}
 
 VoxelProcessor::~VoxelProcessor() {}
 
@@ -31,10 +34,25 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     grid.initialize(grid_x, grid_y, grid_z, voxel_size_);
     grid.setOrigin(min_pt.x, min_pt.y, min_pt.z);
     
-    // Voxelize points
+    // Count points per voxel
+    std::map<std::tuple<int, int, int>, int> voxel_point_count;
+    
     for (const auto& point : cloud.points) {
         int x, y, z;
         if (pointToVoxelIndex(point, min_pt, x, y, z, grid_x, grid_y, grid_z) >= 0) {
+            auto voxel_key = std::make_tuple(x, y, z);
+            voxel_point_count[voxel_key]++;
+        }
+    }
+    
+    // Set voxel occupancy based on point count threshold
+    for (const auto& entry : voxel_point_count) {
+        int x = std::get<0>(entry.first);
+        int y = std::get<1>(entry.first);
+        int z = std::get<2>(entry.first);
+        int point_count = entry.second;
+        
+        if (point_count >= min_points_threshold_) {
             grid.setVoxel(x, y, z, true);
         }
     }
@@ -115,7 +133,7 @@ float VoxelProcessor::findOptimalVoxelSize(const PointCloud& cloud,
     
     // Try different voxel sizes
     for (float size = min_size; size <= max_size; size += step) {
-        VoxelProcessor temp_processor(size, block_size_);
+        VoxelProcessor temp_processor(size, block_size_, min_points_threshold_);
         VoxelGrid temp_grid;
         
         if (temp_processor.voxelizePointCloud(cloud, temp_grid)) {

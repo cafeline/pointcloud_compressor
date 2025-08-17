@@ -40,7 +40,7 @@ public:
     int size;
     
 private:
-    std::vector<bool> voxels_;  // Flattened 3D array
+    std::vector<uint8_t> voxels_;  // Flattened 3D array (using uint8_t to avoid std::vector<bool> issues)
     
     int indexFromCoord(int x, int y, int z) const;
 };
@@ -92,7 +92,7 @@ private:
     int dim_x_, dim_y_, dim_z_;  // Grid dimensions
     float voxel_size_;            // Size of each voxel
     float origin_x_, origin_y_, origin_z_;  // Grid origin
-    std::vector<bool> voxels_;   // Flattened 3D array
+    std::vector<uint8_t> voxels_;   // Flattened 3D array (using uint8_t to avoid std::vector<bool> issues)
     
     int indexFromCoord(int x, int y, int z) const;
 };

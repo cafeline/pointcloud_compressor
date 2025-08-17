@@ -1,0 +1,16 @@
+ply
+format ascii 1.0
+comment Simple cube with 8 vertices
+element vertex 8
+property float x
+property float y
+property float z
+end_header
+0.0 0.0 0.0
+1.0 0.0 0.0
+1.0 1.0 0.0
+0.0 1.0 0.0
+0.0 0.0 1.0
+1.0 0.0 1.0
+1.0 1.0 1.0
+0.0 1.0 1.0

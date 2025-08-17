@@ -16,7 +16,7 @@ class VoxelBlock;
 class VoxelProcessor {
 public:
     // Constructor
-    VoxelProcessor(float voxel_size = 0.01f, int block_size = 8);
+    VoxelProcessor(float voxel_size = 0.01f, int block_size = 8, int min_points_threshold = 1);
     
     // Destructor
     ~VoxelProcessor();
@@ -62,9 +62,13 @@ public:
     int getBlockSize() const { return block_size_; }
     void setBlockSize(int size) { block_size_ = size; }
     
+    int getMinPointsThreshold() const { return min_points_threshold_; }
+    void setMinPointsThreshold(int threshold) { min_points_threshold_ = std::max(1, threshold); }
+    
 private:
     float voxel_size_;  // Size of each voxel
     int block_size_;    // Size of each block (e.g., 8x8x8)
+    int min_points_threshold_;  // Minimum points per voxel to mark as occupied
     
     // Helper functions
     void computeBoundingBox(const PointCloud& cloud, 

@@ -38,6 +38,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 # Core library source files
 set(CORE_SOURCES
   src/io/PcdIO.cpp
+  src/io/PlyIO.cpp
+  src/io/FileFormatDetector.cpp
+  src/io/PointCloudIO.cpp
   src/model/VoxelGrid.cpp
   src/core/VoxelProcessor.cpp
   src/core/PatternDictionaryBuilder.cpp
@@ -72,6 +75,8 @@ rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typ
 target_link_libraries(${PROJECT_NAME}_node "${cpp_typesupport_target}")
 
 # Installation
+install(TARGETS ${PROJECT_NAME}_core
+  DESTINATION lib)
 install(TARGETS ${PROJECT_NAME}_cli ${PROJECT_NAME}_node
   DESTINATION lib/${PROJECT_NAME})
 
@@ -99,6 +104,21 @@ if(BUILD_TESTING)
   ament_add_gtest(test_pcd_io test/test_pcd_io.cpp)
   target_link_libraries(test_pcd_io ${PROJECT_NAME}_core)
   target_compile_definitions(test_pcd_io PRIVATE TEST_DATA_DIR="${TEST_DATA_DIR}")
+  
+  # PLY I/O Test
+  ament_add_gtest(test_ply_io test/test_ply_io.cpp)
+  target_link_libraries(test_ply_io ${PROJECT_NAME}_core)
+  target_compile_definitions(test_ply_io PRIVATE TEST_DATA_DIR="${TEST_DATA_DIR}")
+  
+  # File Format Detector Test
+  ament_add_gtest(test_file_format_detector test/test_file_format_detector.cpp)
+  target_link_libraries(test_file_format_detector ${PROJECT_NAME}_core)
+  target_compile_definitions(test_file_format_detector PRIVATE TEST_DATA_DIR="${TEST_DATA_DIR}")
+  
+  # PointCloud I/O Test
+  ament_add_gtest(test_pointcloud_io test/test_pointcloud_io.cpp)
+  target_link_libraries(test_pointcloud_io ${PROJECT_NAME}_core)
+  target_compile_definitions(test_pointcloud_io PRIVATE TEST_DATA_DIR="${TEST_DATA_DIR}")
   
   # Voxel Processor Test
   ament_add_gtest(test_voxel_processor test/test_voxel_processor.cpp)

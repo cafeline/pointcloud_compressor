@@ -16,20 +16,27 @@ public:
     PointCloudCompressorNode() : Node("pointcloud_compressor_node"), compressed_published_(false)
     {
         // Declare parameters
+        this->declare_parameter("input_file", "");
+        // Keep old parameter name for backward compatibility
         this->declare_parameter("input_pcd_file", "");
         this->declare_parameter("voxel_size", 0.01);
         this->declare_parameter("block_size", 8);
         this->declare_parameter("use_8bit_indices", false);
+        this->declare_parameter("min_points_threshold", 1);
         this->declare_parameter("publish_once", true);
         this->declare_parameter("publish_interval_ms", 1000);
 
-        // Get parameters
-        input_pcd_file_ = this->get_parameter("input_pcd_file").as_string();
+        // Get parameters (with fallback for backward compatibility)
+        input_file_ = this->get_parameter("input_file").as_string();
+        if (input_file_.empty()) {
+            input_file_ = this->get_parameter("input_pcd_file").as_string();
+        }
         
         pointcloud_compressor::CompressionSettings settings;
         settings.voxel_size = this->get_parameter("voxel_size").as_double();
         settings.block_size = this->get_parameter("block_size").as_int();
         settings.use_8bit_indices = this->get_parameter("use_8bit_indices").as_bool();
+        settings.min_points_threshold = this->get_parameter("min_points_threshold").as_int();
         
         bool publish_once = this->get_parameter("publish_once").as_bool();
         int publish_interval_ms = this->get_parameter("publish_interval_ms").as_int();
@@ -42,21 +49,22 @@ public:
             "compressed_pointcloud", 10);
 
         // Validate input file
-        if (input_pcd_file_.empty()) {
-            RCLCPP_ERROR(this->get_logger(), "No input PCD file specified. Use parameter 'input_pcd_file'");
+        if (input_file_.empty()) {
+            RCLCPP_ERROR(this->get_logger(), "No input file specified. Use parameter 'input_file' or 'input_pcd_file'");
             return;
         }
 
-        if (!compressor_->validateInputFile(input_pcd_file_)) {
-            RCLCPP_ERROR(this->get_logger(), "Invalid input PCD file: %s", input_pcd_file_.c_str());
+        if (!compressor_->validateInputFile(input_file_)) {
+            RCLCPP_ERROR(this->get_logger(), "Invalid input file: %s", input_file_.c_str());
             return;
         }
 
         RCLCPP_INFO(this->get_logger(), "PointCloud Compressor Node initialized");
-        RCLCPP_INFO(this->get_logger(), "Input file: %s", input_pcd_file_.c_str());
+        RCLCPP_INFO(this->get_logger(), "Input file: %s", input_file_.c_str());
         RCLCPP_INFO(this->get_logger(), "Voxel size: %.3f", settings.voxel_size);
         RCLCPP_INFO(this->get_logger(), "Block size: %d", settings.block_size);
         RCLCPP_INFO(this->get_logger(), "Use 8-bit indices: %s", settings.use_8bit_indices ? "true" : "false");
+        RCLCPP_INFO(this->get_logger(), "Min points threshold: %d", settings.min_points_threshold);
 
         if (publish_once) {
             // Compress and publish once immediately
@@ -77,12 +85,12 @@ private:
             return;
         }
 
-        RCLCPP_INFO(this->get_logger(), "Starting compression of: %s", input_pcd_file_.c_str());
+        RCLCPP_INFO(this->get_logger(), "Starting compression of: %s", input_file_.c_str());
 
         // Perform compression
         auto start_time = std::chrono::high_resolution_clock::now();
         std::string temp_prefix = "/tmp/compressed_" + std::to_string(this->now().nanoseconds());
-        auto compression_result = compressor_->compress(input_pcd_file_, temp_prefix);
+        auto compression_result = compressor_->compress(input_file_, temp_prefix);
         auto end_time = std::chrono::high_resolution_clock::now();
 
         auto compression_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
@@ -126,19 +134,22 @@ private:
         msg.original_point_count = static_cast<uint32_t>(result.original_size / (3 * sizeof(float)));
         msg.original_data_size = static_cast<uint32_t>(result.original_size);
 
-        // Set voxel grid information (would need to get from actual voxel grid)
-        msg.voxel_grid_dimensions.x = 0.0;  // Would be filled with actual data
-        msg.voxel_grid_dimensions.y = 0.0;
-        msg.voxel_grid_dimensions.z = 0.0;
-        msg.voxel_grid_origin.x = 0.0;
-        msg.voxel_grid_origin.y = 0.0;
-        msg.voxel_grid_origin.z = 0.0;
+        // Set voxel grid information from actual data
+        msg.voxel_grid_dimensions.x = result.grid_dimensions.x;
+        msg.voxel_grid_dimensions.y = result.grid_dimensions.y;
+        msg.voxel_grid_dimensions.z = result.grid_dimensions.z;
+        msg.voxel_grid_origin.x = result.grid_origin.x;
+        msg.voxel_grid_origin.y = result.grid_origin.y;
+        msg.voxel_grid_origin.z = result.grid_origin.z;
 
-        // Set block information
+        // Set block information from actual data
         msg.total_blocks = static_cast<uint32_t>(result.num_blocks);
-        msg.blocks_x = 0;  // Would be calculated from actual data
-        msg.blocks_y = 0;
-        msg.blocks_z = 0;
+        msg.blocks_x = static_cast<uint32_t>(result.blocks_count.x);
+        msg.blocks_y = static_cast<uint32_t>(result.blocks_count.y);
+        msg.blocks_z = static_cast<uint32_t>(result.blocks_count.z);
+        
+        // Set block indices from actual data
+        msg.block_indices = result.block_indices;
 
         // Set compression settings
         auto settings = compressor_->getSettings();
@@ -147,9 +158,19 @@ private:
         msg.compression_settings.use_8bit_indices = settings.use_8bit_indices;
         msg.compression_settings.algorithm_version = "1.0.0";
 
-        // Set pattern dictionary (simplified - would need actual dictionary data)
+        // Set pattern dictionary from actual data
         msg.pattern_dictionary.num_patterns = static_cast<uint32_t>(result.num_unique_patterns);
-        msg.pattern_dictionary.pattern_size_bytes = 64;  // Example value
+        msg.pattern_dictionary.pattern_size_bytes = 64;  // Based on 8x8x8 block = 512 bits = 64 bytes
+        
+        // Create dummy pattern data for now (would use actual dictionary)
+        if (result.num_unique_patterns > 0) {
+            msg.pattern_dictionary.dictionary_data.resize(result.num_unique_patterns * 64);
+            // Fill with pattern data (simplified for demo)
+            for (size_t i = 0; i < msg.pattern_dictionary.dictionary_data.size(); ++i) {
+                msg.pattern_dictionary.dictionary_data[i] = static_cast<uint8_t>(i % 256);
+            }
+        }
+        
         msg.pattern_dictionary.checksum = 0;  // Would calculate actual CRC32
 
         // Set compression statistics
@@ -179,7 +200,7 @@ private:
     std::unique_ptr<pointcloud_compressor::PointCloudCompressor> compressor_;
     rclcpp::Publisher<pointcloud_compressor::msg::CompressedPointCloud>::SharedPtr compressed_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
-    std::string input_pcd_file_;
+    std::string input_file_;
     bool compressed_published_;
 };
 

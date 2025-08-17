@@ -8,26 +8,26 @@ namespace pointcloud_compressor {
 // VoxelBlock implementation
 VoxelBlock::VoxelBlock(int size) : size(size), position(0, 0, 0) {
     int total_voxels = size * size * size;
-    voxels_.resize(total_voxels, false);
+    voxels_.resize(total_voxels, 0);  // Using 0 for false
 }
 
 VoxelBlock::~VoxelBlock() {}
 
 void VoxelBlock::setVoxel(int x, int y, int z, bool occupied) {
     if (x >= 0 && x < size && y >= 0 && y < size && z >= 0 && z < size) {
-        voxels_[indexFromCoord(x, y, z)] = occupied;
+        voxels_[indexFromCoord(x, y, z)] = occupied ? 1 : 0;
     }
 }
 
 bool VoxelBlock::getVoxel(int x, int y, int z) const {
     if (x >= 0 && x < size && y >= 0 && y < size && z >= 0 && z < size) {
-        return voxels_[indexFromCoord(x, y, z)];
+        return voxels_[indexFromCoord(x, y, z)] != 0;
     }
     return false;
 }
 
 int VoxelBlock::getOccupiedCount() const {
-    return std::count(voxels_.begin(), voxels_.end(), true);
+    return std::count_if(voxels_.begin(), voxels_.end(), [](uint8_t v) { return v != 0; });
 }
 
 bool VoxelBlock::isEmpty() const {
@@ -40,7 +40,7 @@ std::vector<uint8_t> VoxelBlock::toBytePattern() const {
     std::vector<uint8_t> pattern(total_bytes, 0);
     
     for (int i = 0; i < total_bits; ++i) {
-        if (i < voxels_.size() && voxels_[i]) {
+        if (i < voxels_.size() && voxels_[i] != 0) {
             int byte_index = i / 8;
             int bit_index = i % 8;
             pattern[byte_index] |= (1 << bit_index);
@@ -52,13 +52,13 @@ std::vector<uint8_t> VoxelBlock::toBytePattern() const {
 
 void VoxelBlock::fromBytePattern(const std::vector<uint8_t>& pattern) {
     int total_bits = size * size * size;
-    voxels_.assign(total_bits, false);
+    voxels_.assign(total_bits, 0);
     
     for (int i = 0; i < total_bits && i / 8 < pattern.size(); ++i) {
         int byte_index = i / 8;
         int bit_index = i % 8;
         if (pattern[byte_index] & (1 << bit_index)) {
-            voxels_[i] = true;
+            voxels_[i] = 1;
         }
     }
 }
@@ -85,18 +85,18 @@ void VoxelGrid::initialize(int dim_x, int dim_y, int dim_z, float voxel_size) {
     voxel_size_ = voxel_size;
     
     int total_voxels = dim_x * dim_y * dim_z;
-    voxels_.assign(total_voxels, false);
+    voxels_.assign(total_voxels, 0);
 }
 
 void VoxelGrid::setVoxel(int x, int y, int z, bool occupied) {
     if (isValidCoord(x, y, z)) {
-        voxels_[indexFromCoord(x, y, z)] = occupied;
+        voxels_[indexFromCoord(x, y, z)] = occupied ? 1 : 0;
     }
 }
 
 bool VoxelGrid::getVoxel(int x, int y, int z) const {
     if (isValidCoord(x, y, z)) {
-        return voxels_[indexFromCoord(x, y, z)];
+        return voxels_[indexFromCoord(x, y, z)] != 0;
     }
     return false;
 }
@@ -110,7 +110,7 @@ void VoxelGrid::setDimensions(int x, int y, int z) {
 }
 
 int VoxelGrid::getOccupiedVoxelCount() const {
-    return std::count(voxels_.begin(), voxels_.end(), true);
+    return std::count_if(voxels_.begin(), voxels_.end(), [](uint8_t v) { return v != 0; });
 }
 
 int VoxelGrid::getTotalVoxelCount() const {
@@ -124,7 +124,7 @@ float VoxelGrid::getOccupancyRatio() const {
 }
 
 void VoxelGrid::clear() {
-    std::fill(voxels_.begin(), voxels_.end(), false);
+    std::fill(voxels_.begin(), voxels_.end(), 0);
 }
 
 bool VoxelGrid::isValidCoord(int x, int y, int z) const {
