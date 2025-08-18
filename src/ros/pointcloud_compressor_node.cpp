@@ -2,13 +2,18 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 #include <filesystem>
 #include <chrono>
+#include <iostream>
 
 #include "pointcloud_compressor/msg/compressed_point_cloud.hpp"
 #include "pointcloud_compressor/msg/compression_settings.hpp"
 #include "pointcloud_compressor/msg/pattern_dictionary.hpp"
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
+#include "pointcloud_compressor/core/VoxelProcessor.hpp"
+#include "pointcloud_compressor/io/PointCloudIO.hpp"
 
 class PointCloudCompressorNode : public rclcpp::Node
 {
@@ -25,6 +30,7 @@ public:
         this->declare_parameter("min_points_threshold", 1);
         this->declare_parameter("publish_once", true);
         this->declare_parameter("publish_interval_ms", 1000);
+        this->declare_parameter("publish_occupied_voxel_markers", false);
 
         // Get parameters (with fallback for backward compatibility)
         input_file_ = this->get_parameter("input_file").as_string();
@@ -40,13 +46,22 @@ public:
         
         bool publish_once = this->get_parameter("publish_once").as_bool();
         int publish_interval_ms = this->get_parameter("publish_interval_ms").as_int();
+        publish_occupied_voxel_markers_ = this->get_parameter("publish_occupied_voxel_markers").as_bool();
+        settings_ = settings;  // Store settings for later use
 
         // Initialize compressor
         compressor_ = std::make_unique<pointcloud_compressor::PointCloudCompressor>(settings);
 
-        // Create publisher
+        // Create publishers
         compressed_pub_ = this->create_publisher<pointcloud_compressor::msg::CompressedPointCloud>(
             "compressed_pointcloud", 10);
+            
+        // Create occupied voxel marker publisher if enabled
+        if (publish_occupied_voxel_markers_) {
+            marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
+                "occupied_voxel_markers", 10);
+            RCLCPP_INFO(this->get_logger(), "Occupied voxel marker publishing enabled");
+        }
 
         // Validate input file
         if (input_file_.empty()) {
@@ -65,6 +80,7 @@ public:
         RCLCPP_INFO(this->get_logger(), "Block size: %d", settings.block_size);
         RCLCPP_INFO(this->get_logger(), "Use 8-bit indices: %s", settings.use_8bit_indices ? "true" : "false");
         RCLCPP_INFO(this->get_logger(), "Min points threshold: %d", settings.min_points_threshold);
+        std::cout << "[DEBUG] min_points_threshold parameter value: " << settings.min_points_threshold << std::endl;
 
         if (publish_once) {
             // Compress and publish once immediately
@@ -113,6 +129,9 @@ private:
         // Publish the message
         compressed_pub_->publish(msg);
         compressed_published_ = true;
+        
+        // Publish occupied voxel markers if enabled
+        publishOccupiedVoxelMarkers();
 
         RCLCPP_INFO(this->get_logger(), "Published compressed point cloud data");
 
@@ -183,6 +202,96 @@ private:
         return msg;
     }
 
+    void publishOccupiedVoxelMarkers()
+    {
+        if (!publish_occupied_voxel_markers_ || !marker_pub_) {
+            return;
+        }
+        
+        RCLCPP_INFO(this->get_logger(), "Publishing occupied voxel markers...");
+        
+        // Load point cloud
+        pointcloud_compressor::PointCloud cloud;
+        if (!pointcloud_compressor::PointCloudIO::loadPointCloud(input_file_, cloud)) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to load point cloud for marker visualization");
+            return;
+        }
+        
+        // Create voxel processor with same settings
+        pointcloud_compressor::VoxelProcessor processor(
+            settings_.voxel_size, 
+            settings_.block_size, 
+            settings_.min_points_threshold
+        );
+        
+        // Voxelize the point cloud
+        pointcloud_compressor::VoxelGrid grid;
+        if (!processor.voxelizePointCloud(cloud, grid)) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to voxelize point cloud");
+            return;
+        }
+        
+        // Create marker array
+        visualization_msgs::msg::MarkerArray marker_array;
+        
+        // Get occupied voxel positions
+        auto dimensions = grid.getDimensions();
+        int marker_id = 0;
+        
+        for (int z = 0; z < dimensions.z; ++z) {
+            for (int y = 0; y < dimensions.y; ++y) {
+                for (int x = 0; x < dimensions.x; ++x) {
+                    if (grid.getVoxel(x, y, z)) {
+                        // Create marker for this occupied voxel
+                        visualization_msgs::msg::Marker marker;
+                        marker.header.frame_id = "map";
+                        marker.header.stamp = this->get_clock()->now();
+                        marker.id = marker_id++;
+                        marker.type = visualization_msgs::msg::Marker::CUBE;
+                        marker.action = visualization_msgs::msg::Marker::ADD;
+                        
+                        // Position at center of voxel
+                        float origin_x, origin_y, origin_z;
+                        grid.getOrigin(origin_x, origin_y, origin_z);
+                        marker.pose.position.x = origin_x + (x + 0.5) * settings_.voxel_size;
+                        marker.pose.position.y = origin_y + (y + 0.5) * settings_.voxel_size;
+                        marker.pose.position.z = origin_z + (z + 0.5) * settings_.voxel_size;
+                        
+                        // Orientation
+                        marker.pose.orientation.w = 1.0;
+                        
+                        // Scale (slightly smaller than voxel size for visibility)
+                        marker.scale.x = settings_.voxel_size * 0.9;
+                        marker.scale.y = settings_.voxel_size * 0.9;
+                        marker.scale.z = settings_.voxel_size * 0.9;
+                        
+                        // Color (green, semi-transparent)
+                        marker.color.r = 0.0;
+                        marker.color.g = 1.0;
+                        marker.color.b = 0.0;
+                        marker.color.a = 0.5;
+                        
+                        marker_array.markers.push_back(marker);
+                    }
+                }
+            }
+        }
+        
+        // Publish markers
+        marker_pub_->publish(marker_array);
+        RCLCPP_INFO(this->get_logger(), "Published %zu occupied voxel markers", marker_array.markers.size());
+        
+        // Print summary
+        std::cout << "======================================================================" << std::endl;
+        std::cout << "OCCUPIED VOXEL MARKERS" << std::endl;
+        std::cout << "======================================================================" << std::endl;
+        std::cout << "Voxel size: " << settings_.voxel_size << " m" << std::endl;
+        std::cout << "Min points threshold: " << settings_.min_points_threshold << std::endl;
+        std::cout << "Grid dimensions: " << dimensions.x << "x" << dimensions.y << "x" << dimensions.z << std::endl;
+        std::cout << "Occupied voxels: " << marker_array.markers.size() << std::endl;
+        std::cout << "======================================================================" << std::endl;
+    }
+    
     void cleanupTempFiles(const std::string& prefix)
     {
         // Clean up any temporary files created during compression
@@ -199,9 +308,12 @@ private:
     // Member variables
     std::unique_ptr<pointcloud_compressor::PointCloudCompressor> compressor_;
     rclcpp::Publisher<pointcloud_compressor::msg::CompressedPointCloud>::SharedPtr compressed_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
     std::string input_file_;
     bool compressed_published_;
+    bool publish_occupied_voxel_markers_;
+    pointcloud_compressor::CompressionSettings settings_;
 };
 
 int main(int argc, char** argv)

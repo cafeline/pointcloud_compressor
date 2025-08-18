@@ -45,6 +45,11 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
         }
     }
     
+    // Debug: Log filtering statistics
+    int total_voxels = voxel_point_count.size();
+    int occupied_voxels = 0;
+    int filtered_voxels = 0;
+    
     // Set voxel occupancy based on point count threshold
     for (const auto& entry : voxel_point_count) {
         int x = std::get<0>(entry.first);
@@ -54,8 +59,17 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
         
         if (point_count >= min_points_threshold_) {
             grid.setVoxel(x, y, z, true);
+            occupied_voxels++;
+        } else {
+            filtered_voxels++;
         }
     }
+    
+    // Debug output
+    std::cout << "[VoxelProcessor] min_points_threshold=" << min_points_threshold_ << std::endl;
+    std::cout << "[VoxelProcessor] Total voxels with points: " << total_voxels << std::endl;
+    std::cout << "[VoxelProcessor] Occupied voxels (>= threshold): " << occupied_voxels << std::endl;
+    std::cout << "[VoxelProcessor] Filtered voxels (< threshold): " << filtered_voxels << std::endl;
     
     return true;
 }
