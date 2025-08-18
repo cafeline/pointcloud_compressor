@@ -84,6 +84,9 @@ private:
     // Internal compression steps
     bool loadPointCloud(const std::string& filename, PointCloud& cloud);
     bool voxelizeAndDivide(const PointCloud& cloud, std::vector<VoxelBlock>& blocks);
+    bool voxelizeAndDivideWithGrid(const PointCloud& cloud, 
+                                   std::vector<VoxelBlock>& blocks, 
+                                   VoxelGrid& grid);
     bool buildDictionaryAndEncode(const std::vector<VoxelBlock>& blocks,
                                  std::vector<uint16_t>& indices);
     bool saveCompressionData(const std::string& output_prefix,

@@ -1,4 +1,5 @@
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
+#include "pointcloud_compressor/model/VoxelGrid.hpp"
 #include <filesystem>
 #include <iostream>
 #include <fstream>
@@ -37,12 +38,14 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
         
         // Step 2: Voxelize and divide into blocks
         std::vector<VoxelBlock> blocks;
-        if (!voxelizeAndDivide(cloud, blocks)) {
+        VoxelGrid grid;
+        if (!voxelizeAndDivideWithGrid(cloud, blocks, grid)) {
             result.error_message = "Failed to voxelize point cloud";
             return result;
         }
         
         result.num_blocks = blocks.size();
+        result.voxel_grid = grid;
         
         // Step 3: Build dictionary and encode
         std::vector<uint16_t> indices;
@@ -87,11 +90,22 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
             result.grid_origin.z = min_z;
         }
         
-        // Calculate blocks count (simplified)
-        int blocks_per_dim = static_cast<int>(std::ceil(std::cbrt(blocks.size())));
-        result.blocks_count.x = blocks_per_dim;
-        result.blocks_count.y = blocks_per_dim;
-        result.blocks_count.z = std::max(1, static_cast<int>(blocks.size()) / (blocks_per_dim * blocks_per_dim));
+        // Calculate actual blocks count from voxel grid dimensions
+        VoxelCoord dims = grid.getDimensions();
+        int x_blocks = (dims.x + settings_.block_size - 1) / settings_.block_size;
+        int y_blocks = (dims.y + settings_.block_size - 1) / settings_.block_size;
+        int z_blocks = (dims.z + settings_.block_size - 1) / settings_.block_size;
+        
+        result.blocks_count.x = x_blocks;
+        result.blocks_count.y = y_blocks;
+        result.blocks_count.z = z_blocks;
+        
+        // Also get the actual grid origin
+        float origin_x, origin_y, origin_z;
+        grid.getOrigin(origin_x, origin_y, origin_z);
+        result.grid_origin.x = origin_x;
+        result.grid_origin.y = origin_y;
+        result.grid_origin.z = origin_z;
         
         // Calculate compression ratio
         result.compressed_size = indices.size() * (settings_.use_8bit_indices ? 1 : 2);
@@ -189,6 +203,16 @@ bool PointCloudCompressor::loadPointCloud(const std::string& filename, PointClou
 
 bool PointCloudCompressor::voxelizeAndDivide(const PointCloud& cloud, std::vector<VoxelBlock>& blocks) {
     VoxelGrid grid;
+    if (!voxel_processor_->voxelizePointCloud(cloud, grid)) {
+        return false;
+    }
+    
+    return voxel_processor_->divideIntoBlocks(grid, blocks);
+}
+
+bool PointCloudCompressor::voxelizeAndDivideWithGrid(const PointCloud& cloud, 
+                                                     std::vector<VoxelBlock>& blocks, 
+                                                     VoxelGrid& grid) {
     if (!voxel_processor_->voxelizePointCloud(cloud, grid)) {
         return false;
     }

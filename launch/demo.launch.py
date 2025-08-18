@@ -56,22 +56,15 @@ def generate_launch_description():
         cmd=[
             FindExecutable(name='python3'),
             '-c',
-            f'''
-import numpy as np
-import open3d as o3d
-
-# Create a sample point cloud
-n_points = {LaunchConfiguration('sample_size')}
-points = np.random.rand(n_points, 3) * 2.0 - 1.0  # Points in [-1, 1]^3
-
-# Create Open3D point cloud
-pcd = o3d.geometry.PointCloud()
-pcd.points = o3d.utility.Vector3dVector(points)
-
-# Save as PCD file
-o3d.io.write_point_cloud("{sample_pcd_path}", pcd)
-print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
-            '''
+            [
+                'import numpy as np; import open3d as o3d; ',
+                'n_points = ', LaunchConfiguration('sample_size'), '; ',
+                'points = np.random.rand(int(n_points), 3) * 2.0 - 1.0; ',
+                'pcd = o3d.geometry.PointCloud(); ',
+                'pcd.points = o3d.utility.Vector3dVector(points); ',
+                f'o3d.io.write_point_cloud("{sample_pcd_path}", pcd); ',
+                'print(f"Created sample PCD file with {{}} points: ', f'{sample_pcd_path}'.format('{n_points}'), '")'
+            ]
         ],
         output='screen',
         condition=LaunchConfigurationEquals('create_sample', 'true')
