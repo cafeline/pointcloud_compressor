@@ -8,8 +8,6 @@
 #include <chrono>
 #include <iostream>
 
-#include "pointcloud_compressor/msg/compressed_point_cloud.hpp"
-#include "pointcloud_compressor/msg/compression_settings.hpp"
 #include "pointcloud_compressor/msg/pattern_dictionary.hpp"
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/core/VoxelProcessor.hpp"
@@ -53,8 +51,8 @@ public:
         compressor_ = std::make_unique<pointcloud_compressor::PointCloudCompressor>(settings);
 
         // Create publishers
-        compressed_pub_ = this->create_publisher<pointcloud_compressor::msg::CompressedPointCloud>(
-            "compressed_pointcloud", 10);
+        pattern_dict_pub_ = this->create_publisher<pointcloud_compressor::msg::PatternDictionary>(
+            "pattern_dictionary", 10);
             
         // Create occupied voxel marker publisher if enabled
         if (publish_occupied_voxel_markers_) {
@@ -122,36 +120,39 @@ private:
         RCLCPP_INFO(this->get_logger(), "Compression ratio: %.3f", compression_result.compression_ratio);
         RCLCPP_INFO(this->get_logger(), "Unique patterns: %zu", compression_result.num_unique_patterns);
 
-        // Create and populate compressed message
-        auto msg = createCompressedMessage(compression_result, 
+        // Create and populate pattern dictionary message
+        auto msg = createPatternDictionaryMessage(compression_result, 
                                          static_cast<double>(compression_duration.count()) / 1000.0);
 
         // Publish the message
-        compressed_pub_->publish(msg);
+        pattern_dict_pub_->publish(msg);
         compressed_published_ = true;
         
         // Publish occupied voxel markers if enabled
         publishOccupiedVoxelMarkers();
 
-        RCLCPP_INFO(this->get_logger(), "Published compressed point cloud data");
+        RCLCPP_INFO(this->get_logger(), "Published pattern dictionary data");
 
         // Clean up temporary files
         cleanupTempFiles(temp_prefix);
     }
 
-    pointcloud_compressor::msg::CompressedPointCloud createCompressedMessage(
+    pointcloud_compressor::msg::PatternDictionary createPatternDictionaryMessage(
         const pointcloud_compressor::CompressionResult& result,
-        double compression_time_seconds)
+        double /*compression_time_seconds*/)
     {
-        auto msg = pointcloud_compressor::msg::CompressedPointCloud();
+        auto msg = pointcloud_compressor::msg::PatternDictionary();
 
         // Set header
         msg.header.stamp = this->now();
         msg.header.frame_id = "base_link";
 
-        // Set original data information (simplified for this demo)
-        msg.original_point_count = static_cast<uint32_t>(result.original_size / (3 * sizeof(float)));
-        msg.original_data_size = static_cast<uint32_t>(result.original_size);
+        // Set compression settings
+        auto settings = compressor_->getSettings();
+        msg.voxel_size = settings.voxel_size;
+        msg.block_size = static_cast<uint32_t>(settings.block_size);
+        msg.use_8bit_indices = settings.use_8bit_indices;
+        msg.min_points_threshold = static_cast<uint32_t>(settings.min_points_threshold);
 
         // Set voxel grid information from actual data
         msg.voxel_grid_dimensions.x = result.grid_dimensions.x;
@@ -167,37 +168,32 @@ private:
         msg.blocks_y = static_cast<uint32_t>(result.blocks_count.y);
         msg.blocks_z = static_cast<uint32_t>(result.blocks_count.z);
         
-        // Set block indices from actual data
-        msg.block_indices = result.block_indices;
-
-        // Set compression settings
-        auto settings = compressor_->getSettings();
-        msg.compression_settings.voxel_size = settings.voxel_size;
-        msg.compression_settings.block_size = static_cast<uint32_t>(settings.block_size);
-        msg.compression_settings.use_8bit_indices = settings.use_8bit_indices;
-        msg.compression_settings.algorithm_version = "1.0.0";
+        // Set block indices from actual data (convert from uint16 to uint8)
+        msg.block_indices.resize(result.block_indices.size());
+        for (size_t i = 0; i < result.block_indices.size(); ++i) {
+            // Clamp to uint8 range (0-255)
+            msg.block_indices[i] = static_cast<uint8_t>(std::min(result.block_indices[i], static_cast<uint16_t>(255)));
+        }
 
         // Set pattern dictionary from actual data
-        msg.pattern_dictionary.num_patterns = static_cast<uint32_t>(result.num_unique_patterns);
-        msg.pattern_dictionary.pattern_size_bytes = 64;  // Based on 8x8x8 block = 512 bits = 64 bytes
+        msg.num_patterns = static_cast<uint32_t>(result.num_unique_patterns);
+        msg.pattern_size_bytes = 64;  // Based on 8x8x8 block = 512 bits = 64 bytes
         
         // Create dummy pattern data for now (would use actual dictionary)
         if (result.num_unique_patterns > 0) {
-            msg.pattern_dictionary.dictionary_data.resize(result.num_unique_patterns * 64);
+            msg.dictionary_data.resize(result.num_unique_patterns * 64);
             // Fill with pattern data (simplified for demo)
-            for (size_t i = 0; i < msg.pattern_dictionary.dictionary_data.size(); ++i) {
-                msg.pattern_dictionary.dictionary_data[i] = static_cast<uint8_t>(i % 256);
+            for (size_t i = 0; i < msg.dictionary_data.size(); ++i) {
+                msg.dictionary_data[i] = static_cast<uint8_t>(i % 256);
             }
         }
         
-        msg.pattern_dictionary.checksum = 0;  // Would calculate actual CRC32
+        msg.checksum = 0;  // Would calculate actual CRC32
 
         // Set compression statistics
         msg.compression_ratio = result.compression_ratio;
+        msg.original_point_count = static_cast<uint32_t>(result.original_size / (3 * sizeof(float)));
         msg.compressed_data_size = static_cast<uint32_t>(result.compressed_size);
-        msg.compression_time_seconds = compression_time_seconds;
-        msg.unique_patterns_count = static_cast<uint32_t>(result.num_unique_patterns);
-        msg.reconstruction_error = 0.0f;  // Would calculate if available
 
         return msg;
     }
@@ -307,7 +303,7 @@ private:
 
     // Member variables
     std::unique_ptr<pointcloud_compressor::PointCloudCompressor> compressor_;
-    rclcpp::Publisher<pointcloud_compressor::msg::CompressedPointCloud>::SharedPtr compressed_pub_;
+    rclcpp::Publisher<pointcloud_compressor::msg::PatternDictionary>::SharedPtr pattern_dict_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
     std::string input_file_;
