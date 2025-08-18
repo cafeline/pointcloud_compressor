@@ -1,5 +1,4 @@
 #include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
 #include <visualization_msgs/msg/marker.hpp>
@@ -35,13 +34,13 @@ public:
         if (input_file_.empty()) {
             input_file_ = this->get_parameter("input_pcd_file").as_string();
         }
-        
+
         pointcloud_compressor::CompressionSettings settings;
         settings.voxel_size = this->get_parameter("voxel_size").as_double();
         settings.block_size = this->get_parameter("block_size").as_int();
         settings.use_8bit_indices = this->get_parameter("use_8bit_indices").as_bool();
         settings.min_points_threshold = this->get_parameter("min_points_threshold").as_int();
-        
+
         bool publish_once = this->get_parameter("publish_once").as_bool();
         int publish_interval_ms = this->get_parameter("publish_interval_ms").as_int();
         publish_occupied_voxel_markers_ = this->get_parameter("publish_occupied_voxel_markers").as_bool();
@@ -53,7 +52,7 @@ public:
         // Create publishers
         pattern_dict_pub_ = this->create_publisher<pointcloud_compressor::msg::PatternDictionary>(
             "pattern_dictionary", 10);
-            
+
         // Create occupied voxel marker publisher if enabled
         if (publish_occupied_voxel_markers_) {
             marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
@@ -121,13 +120,12 @@ private:
         RCLCPP_INFO(this->get_logger(), "Unique patterns: %zu", compression_result.num_unique_patterns);
 
         // Create and populate pattern dictionary message
-        auto msg = createPatternDictionaryMessage(compression_result, 
-                                         static_cast<double>(compression_duration.count()) / 1000.0);
+        auto msg = createPatternDictionaryMessage(compression_result);
 
         // Publish the message
         pattern_dict_pub_->publish(msg);
         compressed_published_ = true;
-        
+
         // Publish occupied voxel markers if enabled
         publishOccupiedVoxelMarkers();
 
@@ -138,14 +136,13 @@ private:
     }
 
     pointcloud_compressor::msg::PatternDictionary createPatternDictionaryMessage(
-        const pointcloud_compressor::CompressionResult& result,
-        double /*compression_time_seconds*/)
+        const pointcloud_compressor::CompressionResult& result)
     {
         auto msg = pointcloud_compressor::msg::PatternDictionary();
 
         // Set header
         msg.header.stamp = this->now();
-        msg.header.frame_id = "base_link";
+        msg.header.frame_id = "map";
 
         // Set compression settings
         auto settings = compressor_->getSettings();
@@ -167,7 +164,7 @@ private:
         msg.blocks_x = static_cast<uint32_t>(result.blocks_count.x);
         msg.blocks_y = static_cast<uint32_t>(result.blocks_count.y);
         msg.blocks_z = static_cast<uint32_t>(result.blocks_count.z);
-        
+
         // Set block indices from actual data (convert from uint16 to uint8)
         msg.block_indices.resize(result.block_indices.size());
         for (size_t i = 0; i < result.block_indices.size(); ++i) {
@@ -178,16 +175,21 @@ private:
         // Set pattern dictionary from actual data
         msg.num_patterns = static_cast<uint32_t>(result.num_unique_patterns);
         msg.pattern_size_bytes = 64;  // Based on 8x8x8 block = 512 bits = 64 bytes
-        
-        // Create dummy pattern data for now (would use actual dictionary)
-        if (result.num_unique_patterns > 0) {
+
+        // Set actual pattern data from compression result
+        if (result.num_unique_patterns > 0 && !result.pattern_dictionary.empty()) {
+            msg.dictionary_data.clear();
+            for (const auto& pattern : result.pattern_dictionary) {
+                msg.dictionary_data.insert(msg.dictionary_data.end(), pattern.begin(), pattern.end());
+            }
+        } else {
+            // Fallback: Create dummy pattern data
             msg.dictionary_data.resize(result.num_unique_patterns * 64);
-            // Fill with pattern data (simplified for demo)
             for (size_t i = 0; i < msg.dictionary_data.size(); ++i) {
                 msg.dictionary_data[i] = static_cast<uint8_t>(i % 256);
             }
         }
-        
+
         msg.checksum = 0;  // Would calculate actual CRC32
 
         // Set compression statistics
@@ -203,37 +205,37 @@ private:
         if (!publish_occupied_voxel_markers_ || !marker_pub_) {
             return;
         }
-        
+
         RCLCPP_INFO(this->get_logger(), "Publishing occupied voxel markers...");
-        
+
         // Load point cloud
         pointcloud_compressor::PointCloud cloud;
         if (!pointcloud_compressor::PointCloudIO::loadPointCloud(input_file_, cloud)) {
             RCLCPP_ERROR(this->get_logger(), "Failed to load point cloud for marker visualization");
             return;
         }
-        
+
         // Create voxel processor with same settings
         pointcloud_compressor::VoxelProcessor processor(
-            settings_.voxel_size, 
-            settings_.block_size, 
+            settings_.voxel_size,
+            settings_.block_size,
             settings_.min_points_threshold
         );
-        
+
         // Voxelize the point cloud
         pointcloud_compressor::VoxelGrid grid;
         if (!processor.voxelizePointCloud(cloud, grid)) {
             RCLCPP_ERROR(this->get_logger(), "Failed to voxelize point cloud");
             return;
         }
-        
+
         // Create marker array
         visualization_msgs::msg::MarkerArray marker_array;
-        
+
         // Get occupied voxel positions
         auto dimensions = grid.getDimensions();
         int marker_id = 0;
-        
+
         for (int z = 0; z < dimensions.z; ++z) {
             for (int y = 0; y < dimensions.y; ++y) {
                 for (int x = 0; x < dimensions.x; ++x) {
@@ -245,38 +247,38 @@ private:
                         marker.id = marker_id++;
                         marker.type = visualization_msgs::msg::Marker::CUBE;
                         marker.action = visualization_msgs::msg::Marker::ADD;
-                        
+
                         // Position at center of voxel
                         float origin_x, origin_y, origin_z;
                         grid.getOrigin(origin_x, origin_y, origin_z);
                         marker.pose.position.x = origin_x + (x + 0.5) * settings_.voxel_size;
                         marker.pose.position.y = origin_y + (y + 0.5) * settings_.voxel_size;
                         marker.pose.position.z = origin_z + (z + 0.5) * settings_.voxel_size;
-                        
+
                         // Orientation
                         marker.pose.orientation.w = 1.0;
-                        
+
                         // Scale (slightly smaller than voxel size for visibility)
                         marker.scale.x = settings_.voxel_size * 0.9;
                         marker.scale.y = settings_.voxel_size * 0.9;
                         marker.scale.z = settings_.voxel_size * 0.9;
-                        
+
                         // Color (green, semi-transparent)
                         marker.color.r = 0.0;
                         marker.color.g = 1.0;
                         marker.color.b = 0.0;
                         marker.color.a = 0.5;
-                        
+
                         marker_array.markers.push_back(marker);
                     }
                 }
             }
         }
-        
+
         // Publish markers
         marker_pub_->publish(marker_array);
         RCLCPP_INFO(this->get_logger(), "Published %zu occupied voxel markers", marker_array.markers.size());
-        
+
         // Print summary
         std::cout << "======================================================================" << std::endl;
         std::cout << "OCCUPIED VOXEL MARKERS" << std::endl;
@@ -287,7 +289,7 @@ private:
         std::cout << "Occupied voxels: " << marker_array.markers.size() << std::endl;
         std::cout << "======================================================================" << std::endl;
     }
-    
+
     void cleanupTempFiles(const std::string& prefix)
     {
         // Clean up any temporary files created during compression
@@ -315,16 +317,16 @@ private:
 int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
-    
+
     try {
         auto node = std::make_shared<PointCloudCompressorNode>();
         rclcpp::spin(node);
     } catch (const std::exception& e) {
-        RCLCPP_ERROR(rclcpp::get_logger("pointcloud_compressor_node"), 
+        RCLCPP_ERROR(rclcpp::get_logger("pointcloud_compressor_node"),
                      "Exception in main: %s", e.what());
         return 1;
     }
-    
+
     rclcpp::shutdown();
     return 0;
 }

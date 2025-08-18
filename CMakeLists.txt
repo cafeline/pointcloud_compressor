@@ -26,9 +26,7 @@ include_directories(
 
 # Generate messages
 set(msg_files
-  "msg/CompressionSettings.msg"
   "msg/PatternDictionary.msg"
-  "msg/CompressedPointCloud.msg"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}

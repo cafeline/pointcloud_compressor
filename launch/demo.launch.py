@@ -3,6 +3,7 @@
 import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo, ExecuteProcess
+from launch.conditions import IfCondition, LaunchConfigurationEquals
 from launch.substitutions import LaunchConfiguration, FindExecutable, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -30,6 +31,12 @@ def generate_launch_description():
         'sample_size',
         default_value='1000',
         description='Number of points in the sample PCD file'
+    )
+    
+    input_file_arg = DeclareLaunchArgument(
+        'input_file',
+        default_value='/tmp/pointcloud_compressor_sample.pcd',
+        description='Input file path (PCD or PLY)'
     )
     
     # Configuration file path
@@ -61,7 +68,7 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
             '''
         ],
         output='screen',
-        condition=lambda context: LaunchConfiguration('create_sample').perform(context) == 'true'
+        condition=LaunchConfigurationEquals('create_sample', 'true')
     )
     
     # Single shot compression demo
@@ -73,14 +80,23 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
         parameters=[
             config_file,
             {
-                'input_pcd_file': sample_pcd_path,
+                'input_pcd_file': LaunchConfiguration('input_file'),
                 'publish_once': True,
                 'voxel_size': 0.01,
                 'block_size': 8,
                 'use_8bit_indices': True,
             }
         ],
-        condition=lambda context: LaunchConfiguration('demo_mode').perform(context) == 'single_shot'
+        condition=LaunchConfigurationEquals('demo_mode', 'single_shot')
+    )
+    
+    # Viewer node for single shot mode
+    single_shot_viewer = Node(
+        package='pointcloud_compressor',
+        executable='compressed_viewer_node',
+        name='compressed_viewer_single_shot',
+        output='screen',
+        condition=LaunchConfigurationEquals('demo_mode', 'single_shot')
     )
     
     # Continuous compression demo
@@ -92,7 +108,7 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
         parameters=[
             config_file,
             {
-                'input_pcd_file': sample_pcd_path,
+                'input_pcd_file': LaunchConfiguration('input_file'),
                 'publish_once': False,
                 'publish_interval_ms': 3000,  # Every 3 seconds
                 'voxel_size': 0.015,
@@ -100,7 +116,16 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
                 'use_8bit_indices': True,
             }
         ],
-        condition=lambda context: LaunchConfiguration('demo_mode').perform(context) == 'continuous'
+        condition=LaunchConfigurationEquals('demo_mode', 'continuous')
+    )
+    
+    # Viewer node for continuous mode
+    continuous_viewer = Node(
+        package='pointcloud_compressor',
+        executable='compressed_viewer_node',
+        name='compressed_viewer_continuous',
+        output='screen',
+        condition=LaunchConfigurationEquals('demo_mode', 'continuous')
     )
     
     # Comparison demo - multiple nodes with different settings
@@ -113,7 +138,7 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
         parameters=[
             config_file,
             {
-                'input_pcd_file': sample_pcd_path,
+                'input_pcd_file': LaunchConfiguration('input_file'),
                 'publish_once': True,
                 'voxel_size': 0.005,
                 'block_size': 4,
@@ -121,9 +146,9 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
             }
         ],
         remappings=[
-            ('compressed_pointcloud', 'high_quality/compressed_pointcloud'),
+            ('pattern_dictionary', 'high_quality/pattern_dictionary'),
         ],
-        condition=lambda context: LaunchConfiguration('demo_mode').perform(context) == 'comparison'
+        condition=LaunchConfigurationEquals('demo_mode', 'comparison')
     )
     
     comparison_high_compression = Node(
@@ -135,7 +160,7 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
         parameters=[
             config_file,
             {
-                'input_pcd_file': sample_pcd_path,
+                'input_pcd_file': LaunchConfiguration('input_file'),
                 'publish_once': True,
                 'voxel_size': 0.02,
                 'block_size': 16,
@@ -143,9 +168,34 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
             }
         ],
         remappings=[
-            ('compressed_pointcloud', 'high_compression/compressed_pointcloud'),
+            ('pattern_dictionary', 'high_compression/pattern_dictionary'),
         ],
-        condition=lambda context: LaunchConfiguration('demo_mode').perform(context) == 'comparison'
+        condition=LaunchConfigurationEquals('demo_mode', 'comparison')
+    )
+    
+    # Viewer nodes for comparison mode
+    comparison_viewer_high_quality = Node(
+        package='pointcloud_compressor',
+        executable='compressed_viewer_node',
+        name='compressed_viewer_high_quality',
+        namespace='high_quality',
+        output='screen',
+        remappings=[
+            ('pattern_markers', 'high_quality/pattern_markers'),
+        ],
+        condition=LaunchConfigurationEquals('demo_mode', 'comparison')
+    )
+    
+    comparison_viewer_high_compression = Node(
+        package='pointcloud_compressor',
+        executable='compressed_viewer_node',
+        name='compressed_viewer_high_compression',
+        namespace='high_compression',
+        output='screen',
+        remappings=[
+            ('pattern_markers', 'high_compression/pattern_markers'),
+        ],
+        condition=LaunchConfigurationEquals('demo_mode', 'comparison')
     )
     
     # Log demo information
@@ -162,9 +212,12 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
             '  continuous   - Compress and publish every 3 seconds\n',
             '  comparison   - Run high quality vs high compression side by side\n',
             '\nTo monitor output:\n',
-            '  ros2 topic echo /compressed_pointcloud\n',
-            '  ros2 topic echo /high_quality/compressed_pointcloud\n',
-            '  ros2 topic echo /high_compression/compressed_pointcloud\n',
+            '  ros2 topic echo /pattern_dictionary\n',
+            '  ros2 topic echo /pattern_markers\n',
+            '  ros2 topic echo /high_quality/pattern_dictionary\n',
+            '  ros2 topic echo /high_quality/pattern_markers\n',
+            '  ros2 topic echo /high_compression/pattern_dictionary\n',
+            '  ros2 topic echo /high_compression/pattern_markers\n',
             '========================================\n'
         ]
     )
@@ -173,10 +226,15 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
         demo_mode_arg,
         create_sample_arg,
         sample_size_arg,
+        input_file_arg,
         demo_info,
         create_sample_pcd,
         single_shot_node,
+        single_shot_viewer,
         continuous_node,
+        continuous_viewer,
         comparison_high_quality,
+        comparison_viewer_high_quality,
         comparison_high_compression,
+        comparison_viewer_high_compression,
     ])

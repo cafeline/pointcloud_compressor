@@ -2,7 +2,6 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <vector>
-#include <bitset>
 
 #include "pointcloud_compressor/msg/pattern_dictionary.hpp"
 
@@ -27,12 +26,6 @@ public:
 private:
     void patternDictionaryCallback(const pointcloud_compressor::msg::PatternDictionary::SharedPtr msg)
     {
-        // Only publish once
-        if (pattern_published_) {
-            RCLCPP_DEBUG(this->get_logger(), "Pattern markers already published, skipping");
-            return;
-        }
-        
         RCLCPP_INFO(this->get_logger(), "Received pattern dictionary with %u patterns", msg->num_patterns);
         RCLCPP_INFO(this->get_logger(), "Voxel size: %.3f", msg->voxel_size);
         RCLCPP_INFO(this->get_logger(), "Block size: %u", msg->block_size);
@@ -44,9 +37,6 @@ private:
         
         // Reconstruct and publish pattern markers
         publishPatternMarkers(msg);
-        
-        pattern_published_ = true;
-        RCLCPP_INFO(this->get_logger(), "Pattern markers published successfully");
     }
     
     void publishPatternMarkers(const pointcloud_compressor::msg::PatternDictionary::SharedPtr msg)
@@ -56,6 +46,7 @@ private:
         // Delete all previous markers
         visualization_msgs::msg::Marker delete_marker;
         delete_marker.header = msg->header;
+        delete_marker.header.frame_id = "map";
         delete_marker.ns = "patterns";
         delete_marker.action = visualization_msgs::msg::Marker::DELETEALL;
         marker_array.markers.push_back(delete_marker);
@@ -68,8 +59,13 @@ private:
         // Check if we have block indices
         if (msg->block_indices.empty()) {
             RCLCPP_WARN(this->get_logger(), "No block indices available, cannot reconstruct");
+            pattern_marker_pub_->publish(marker_array);  // Still publish delete marker
             return;
         }
+        
+        // Debug: Check dictionary data
+        RCLCPP_INFO(this->get_logger(), "Dictionary data size: %zu bytes", msg->dictionary_data.size());
+        RCLCPP_INFO(this->get_logger(), "Block indices size: %zu", msg->block_indices.size());
         
         // Reconstruct blocks from patterns
         int marker_id = 0;
@@ -126,6 +122,7 @@ private:
                             // Create marker for this voxel
                             visualization_msgs::msg::Marker marker;
                             marker.header = msg->header;
+                            marker.header.frame_id = "map";
                             marker.ns = "patterns";
                             marker.id = marker_id++;
                             marker.type = visualization_msgs::msg::Marker::CUBE;
@@ -165,10 +162,22 @@ private:
         }
         
         // Publish the marker array
+        RCLCPP_INFO(this->get_logger(), "Publishing %zu pattern markers", 
+                    marker_array.markers.size() - 1);  // -1 for delete marker
+        
+        // Actually publish the message
         pattern_marker_pub_->publish(marker_array);
         
-        RCLCPP_INFO(this->get_logger(), "Published %zu pattern markers", 
-                    marker_array.markers.size() - 1);  // -1 for delete marker
+        // Log success
+        RCLCPP_INFO(this->get_logger(), "Pattern markers published successfully");
+        
+        // Debug: Check if markers were actually added
+        if (marker_array.markers.size() <= 1) {
+            RCLCPP_WARN(this->get_logger(), "Warning: No pattern markers generated, only delete marker");
+        } else {
+            RCLCPP_INFO(this->get_logger(), "Successfully published %zu markers to /pattern_markers topic", 
+                        marker_array.markers.size());
+        }
     }
     
     std::array<float, 3> hsvToRgb(float h, float s, float v)

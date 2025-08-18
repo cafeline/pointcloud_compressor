@@ -62,6 +62,7 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
         
         // Store actual compression data for ROS message
         result.block_indices = indices;
+        result.pattern_dictionary = dictionary_builder_->getUniquePatterns();
         
         // Calculate basic grid information from point cloud bounds
         if (!cloud.points.empty()) {
