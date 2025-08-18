@@ -48,6 +48,7 @@ private:
         delete_marker.header = msg->header;
         delete_marker.header.frame_id = "map";
         delete_marker.ns = "patterns";
+        delete_marker.id = 0;  // DELETEALL should use ID 0
         delete_marker.action = visualization_msgs::msg::Marker::DELETEALL;
         marker_array.markers.push_back(delete_marker);
         
@@ -68,7 +69,7 @@ private:
         RCLCPP_INFO(this->get_logger(), "Block indices size: %zu", msg->block_indices.size());
         
         // Reconstruct blocks from patterns
-        int marker_id = 0;
+        int marker_id = 1;  // Start from 1 to avoid ID conflicts
         const float voxel_size = msg->voxel_size;
         // const float block_size_world = msg->block_size * voxel_size;  // Not used currently
         
