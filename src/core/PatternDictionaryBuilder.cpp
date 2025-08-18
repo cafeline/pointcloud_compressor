@@ -109,12 +109,20 @@ float PatternDictionaryBuilder::getCompressionRatio() const {
         return 1.0f;
     }
     
-    // Calculate original size
+    // Calculate original size - sum of all patterns if stored without dictionary
     size_t original_bits = 0;
+    size_t avg_pattern_size = 0;
+    
+    // Calculate average pattern size
     for (const auto& pattern : unique_patterns_) {
-        original_bits += pattern.size() * 8;  // Convert bytes to bits
+        avg_pattern_size += pattern.size();
     }
-    original_bits *= pattern_indices_.size() / unique_patterns_.size();  // Account for repetitions
+    if (!unique_patterns_.empty()) {
+        avg_pattern_size /= unique_patterns_.size();
+    }
+    
+    // Original size = number of patterns * average pattern size in bits
+    original_bits = pattern_indices_.size() * avg_pattern_size * 8;
     
     // Calculate compressed size (dictionary + indices)
     size_t dictionary_bits = 0;
