@@ -3,8 +3,8 @@
 import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo, ExecuteProcess
-from launch.conditions import IfCondition, LaunchConfigurationEquals
-from launch.substitutions import LaunchConfiguration, FindExecutable, PathJoinSubstitution
+from launch.conditions import IfCondition, LaunchConfigurationEquals, UnlessCondition
+from launch.substitutions import LaunchConfiguration, FindExecutable, PathJoinSubstitution, PythonExpression, AndSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from ament_index_python.packages import get_package_share_directory
@@ -35,12 +35,18 @@ def generate_launch_description():
     
     input_file_arg = DeclareLaunchArgument(
         'input_file',
-        default_value='/tmp/pointcloud_compressor_sample.pcd',
-        description='Input file path (PCD or PLY)'
+        default_value='',  # Empty means use YAML value
+        description='Input file path (PCD or PLY) - leave empty to use YAML config'
     )
     
-    # Configuration file path
-    config_file = os.path.join(pkg_dir, 'config', 'pointcloud_compressor_params.yaml')
+    launch_rviz_arg = DeclareLaunchArgument(
+        'launch_rviz',
+        default_value='true',
+        description='Launch RViz2 for visualization'
+    )
+    
+    # Configuration file path - use demo_params.yaml from compressed_viewer package
+    config_file = os.path.join(get_package_share_directory('compressed_viewer'), 'config', 'demo_params.yaml')
     
     # Sample PCD file path
     sample_pcd_path = '/tmp/pointcloud_compressor_sample.pcd'
@@ -77,25 +83,19 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
         executable='pointcloud_compressor_node',
         name='pointcloud_compressor_single_shot',
         output='screen',
-        parameters=[
-            config_file,
-            {
-                'input_pcd_file': LaunchConfiguration('input_file'),
-                'publish_once': True,
-                'voxel_size': 0.01,
-                'block_size': 8,
-                'use_8bit_indices': True,
-            }
-        ],
+        parameters=[config_file],  # Use YAML config only
         condition=LaunchConfigurationEquals('demo_mode', 'single_shot')
     )
     
-    # Viewer node for single shot mode
+    # Python Viewer node for single shot mode
     single_shot_viewer = Node(
-        package='pointcloud_compressor',
+        package='compressed_viewer',
         executable='compressed_viewer_node',
         name='compressed_viewer_single_shot',
         output='screen',
+        parameters=[
+            os.path.join(get_package_share_directory('compressed_viewer'), 'config', 'demo_params.yaml')
+        ],
         condition=LaunchConfigurationEquals('demo_mode', 'single_shot')
     )
     
@@ -108,23 +108,22 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
         parameters=[
             config_file,
             {
-                'input_pcd_file': LaunchConfiguration('input_file'),
                 'publish_once': False,
                 'publish_interval_ms': 3000,  # Every 3 seconds
-                'voxel_size': 0.015,
-                'block_size': 8,
-                'use_8bit_indices': True,
             }
         ],
         condition=LaunchConfigurationEquals('demo_mode', 'continuous')
     )
     
-    # Viewer node for continuous mode
+    # Python Viewer node for continuous mode
     continuous_viewer = Node(
-        package='pointcloud_compressor',
+        package='compressed_viewer',
         executable='compressed_viewer_node',
         name='compressed_viewer_continuous',
         output='screen',
+        parameters=[
+            os.path.join(get_package_share_directory('compressed_viewer'), 'config', 'demo_params.yaml')
+        ],
         condition=LaunchConfigurationEquals('demo_mode', 'continuous')
     )
     
@@ -138,7 +137,6 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
         parameters=[
             config_file,
             {
-                'input_pcd_file': LaunchConfiguration('input_file'),
                 'publish_once': True,
                 'voxel_size': 0.005,
                 'block_size': 4,
@@ -160,7 +158,6 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
         parameters=[
             config_file,
             {
-                'input_pcd_file': LaunchConfiguration('input_file'),
                 'publish_once': True,
                 'voxel_size': 0.02,
                 'block_size': 16,
@@ -173,13 +170,16 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
         condition=LaunchConfigurationEquals('demo_mode', 'comparison')
     )
     
-    # Viewer nodes for comparison mode
+    # Python Viewer nodes for comparison mode
     comparison_viewer_high_quality = Node(
-        package='pointcloud_compressor',
+        package='compressed_viewer',
         executable='compressed_viewer_node',
         name='compressed_viewer_high_quality',
         namespace='high_quality',
         output='screen',
+        parameters=[
+            os.path.join(get_package_share_directory('compressed_viewer'), 'config', 'demo_params.yaml')
+        ],
         remappings=[
             ('pattern_markers', 'high_quality/pattern_markers'),
         ],
@@ -187,11 +187,14 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
     )
     
     comparison_viewer_high_compression = Node(
-        package='pointcloud_compressor',
+        package='compressed_viewer',
         executable='compressed_viewer_node',
         name='compressed_viewer_high_compression',
         namespace='high_compression',
         output='screen',
+        parameters=[
+            os.path.join(get_package_share_directory('compressed_viewer'), 'config', 'demo_params.yaml')
+        ],
         remappings=[
             ('pattern_markers', 'high_compression/pattern_markers'),
         ],
@@ -222,11 +225,29 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
         ]
     )
     
+    # RViz2 configuration
+    rviz_config_file = os.path.join(
+        get_package_share_directory('compressed_viewer'),
+        'rviz',
+        'compressed_viewer.rviz'
+    )
+    
+    # RViz2 node
+    rviz_node = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2',
+        arguments=['-d', rviz_config_file],
+        condition=IfCondition(LaunchConfiguration('launch_rviz')),
+        output='screen'
+    )
+    
     return LaunchDescription([
         demo_mode_arg,
         create_sample_arg,
         sample_size_arg,
         input_file_arg,
+        launch_rviz_arg,
         demo_info,
         create_sample_pcd,
         single_shot_node,
@@ -237,4 +258,5 @@ print(f"Created sample PCD file with {{n_points}} points: {sample_pcd_path}")
         comparison_viewer_high_quality,
         comparison_high_compression,
         comparison_viewer_high_compression,
+        rviz_node,
     ])

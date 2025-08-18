@@ -70,25 +70,16 @@ ament_target_dependencies(${PROJECT_NAME}_node
   builtin_interfaces
 )
 
-# Compressed Viewer Node executable
-add_executable(compressed_viewer_node src/ros/compressed_viewer_node.cpp)
-ament_target_dependencies(compressed_viewer_node
-  rclcpp
-  std_msgs
-  geometry_msgs
-  visualization_msgs
-  builtin_interfaces
-)
+# C++ viewer removed - using Python viewer only
 
 # Ensure message headers are generated before building the nodes
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 target_link_libraries(${PROJECT_NAME}_node "${cpp_typesupport_target}")
-target_link_libraries(compressed_viewer_node "${cpp_typesupport_target}")
 
 # Installation
 install(TARGETS ${PROJECT_NAME}_core
   DESTINATION lib)
-install(TARGETS ${PROJECT_NAME}_cli ${PROJECT_NAME}_node compressed_viewer_node
+install(TARGETS ${PROJECT_NAME}_cli ${PROJECT_NAME}_node
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY include/
