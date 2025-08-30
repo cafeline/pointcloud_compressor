@@ -54,6 +54,7 @@ private:
     // Internal helper functions
     static bool parseHeaderInternal(std::ifstream& file, PcdHeader& header);
     static bool readAsciiData(std::ifstream& file, PointCloud& cloud, const PcdHeader& header);
+    static bool readBinaryData(std::ifstream& file, PointCloud& cloud, const PcdHeader& header);
     static bool writeHeader(std::ofstream& file, const PointCloud& cloud);
     static bool writeAsciiData(std::ofstream& file, const PointCloud& cloud);
 };

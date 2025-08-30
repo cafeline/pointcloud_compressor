@@ -144,6 +144,9 @@ private:
             RCLCPP_INFO(this->get_logger(), "Compression completed: %ld ms, ratio %.3f, patterns %zu", 
                         compression_duration.count(), compression_result.compression_ratio, 
                         compression_result.num_unique_patterns);
+            
+            // Calculate and log occupancy grid map size
+            calculateAndLogOccupancyGridSize(compression_result);
         }
         
         // Clean up temporary files
@@ -306,6 +309,73 @@ private:
         marker.color.a = 0.5;
         
         return marker;
+    }
+    
+    void calculateAndLogOccupancyGridSize(const pointcloud_compressor::CompressionResult& result)
+    {
+        // Calculate various components of occupancy grid map size
+        
+        // 1. Voxel Grid dimensions (get from VoxelGrid directly)
+        auto dimensions = result.voxel_grid.getDimensions();
+        int voxel_grid_x = dimensions.x;
+        int voxel_grid_y = dimensions.y;
+        int voxel_grid_z = dimensions.z;
+        int total_voxels = voxel_grid_x * voxel_grid_y * voxel_grid_z;
+        
+        // 2. Voxel Grid raw data size (each voxel stored as uint8_t)
+        size_t voxel_grid_size = total_voxels * sizeof(uint8_t);
+        
+        // 3. Block-based representation
+        int total_blocks = result.num_blocks;
+        int block_size_3d = settings_.block_size * settings_.block_size * settings_.block_size;
+        
+        // 4. Block indices array size
+        size_t block_indices_size = result.block_indices.size() * sizeof(uint16_t);
+        if (settings_.use_8bit_indices) {
+            block_indices_size = result.block_indices.size() * sizeof(uint8_t);
+        }
+        
+        // 5. Pattern dictionary size
+        size_t pattern_dict_size = result.pattern_dictionary.size() * block_size_3d / 8;  // Each pattern is block_size^3 bits
+        
+        // 6. Metadata size (dimensions, origin, settings)
+        size_t metadata_size = 
+            3 * sizeof(int) +      // grid dimensions
+            3 * sizeof(float) +    // grid origin
+            sizeof(float) +        // voxel size
+            sizeof(int) +          // block size
+            sizeof(int);           // min_points_threshold
+        
+        // 7. Total compressed size
+        size_t total_compressed_size = block_indices_size + pattern_dict_size + metadata_size;
+        
+        // 8. Calculate occupied voxels count
+        int occupied_voxels = result.voxel_grid.getOccupiedVoxelCount();
+        float occupancy_ratio = result.voxel_grid.getOccupancyRatio();
+        
+        // Log detailed information
+        RCLCPP_INFO(this->get_logger(), "=== Occupancy Grid Map Size Analysis ===");
+        RCLCPP_INFO(this->get_logger(), "Voxel Grid Dimensions: %d x %d x %d = %d total voxels", 
+                    voxel_grid_x, voxel_grid_y, voxel_grid_z, total_voxels);
+        RCLCPP_INFO(this->get_logger(), "Voxel Size: %.3f meters", settings_.voxel_size);
+        RCLCPP_INFO(this->get_logger(), "Occupied Voxels: %d (%.2f%% occupancy)", 
+                    occupied_voxels, occupancy_ratio * 100);
+        RCLCPP_INFO(this->get_logger(), "Raw Voxel Grid Size: %zu bytes (%.2f KB)", 
+                    voxel_grid_size, voxel_grid_size / 1024.0);
+        RCLCPP_INFO(this->get_logger(), "Block Size: %d x %d x %d = %d voxels per block", 
+                    settings_.block_size, settings_.block_size, settings_.block_size, block_size_3d);
+        RCLCPP_INFO(this->get_logger(), "Total Blocks: %d", total_blocks);
+        RCLCPP_INFO(this->get_logger(), "Block Indices Size: %zu bytes (%s)", 
+                    block_indices_size, settings_.use_8bit_indices ? "8-bit" : "16-bit");
+        RCLCPP_INFO(this->get_logger(), "Pattern Dictionary: %zu patterns, %zu bytes (%.2f KB)", 
+                    result.num_unique_patterns, pattern_dict_size, pattern_dict_size / 1024.0);
+        RCLCPP_INFO(this->get_logger(), "Metadata Size: %zu bytes", metadata_size);
+        RCLCPP_INFO(this->get_logger(), "Total Compressed Size: %zu bytes (%.2f KB)", 
+                    total_compressed_size, total_compressed_size / 1024.0);
+        RCLCPP_INFO(this->get_logger(), "Memory Reduction: %.2f%% (from %.2f KB to %.2f KB)", 
+                    (1.0 - (double)total_compressed_size / voxel_grid_size) * 100,
+                    voxel_grid_size / 1024.0, total_compressed_size / 1024.0);
+        RCLCPP_INFO(this->get_logger(), "========================================");
     }
     
     void cleanupTempFiles(const std::string& prefix)

@@ -3,6 +3,7 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <cmath>
 
 namespace pointcloud_compressor {
 
@@ -41,8 +42,24 @@ bool PcdIO::readPcdFile(const std::string& filename, PointCloud& cloud) {
     // Read data based on type
     if (header.data_type == "ascii") {
         return readAsciiData(file, cloud, header);
+    } else if (header.data_type == "binary" || header.data_type == "binary_compressed") {
+        // For binary data, we need to reopen the file in binary mode
+        std::streampos data_start = file.tellg();
+        file.close();
+        
+        // Reopen in binary mode
+        std::ifstream binary_file(filename, std::ios::binary);
+        if (!binary_file.is_open()) {
+            std::cerr << "Error: Cannot reopen file in binary mode: " << filename << std::endl;
+            return false;
+        }
+        
+        // Skip to data section
+        binary_file.seekg(data_start);
+        
+        return readBinaryData(binary_file, cloud, header);
     } else {
-        std::cerr << "Error: Binary PCD format not yet supported" << std::endl;
+        std::cerr << "Error: Unknown PCD data type: " << header.data_type << std::endl;
         return false;
     }
 }
@@ -178,6 +195,81 @@ bool PcdIO::writeAsciiData(std::ofstream& file, const PointCloud& cloud) {
     }
     
     return file.good();
+}
+
+bool PcdIO::readBinaryData(std::ifstream& file, PointCloud& cloud, const PcdHeader& header) {
+    // Reserve space for points
+    cloud.points.reserve(header.points);
+    
+    // Check for fields to determine data layout
+    bool has_xyz = false;
+    int x_idx = -1, y_idx = -1, z_idx = -1;
+    
+    for (size_t i = 0; i < header.fields.size(); ++i) {
+        if (header.fields[i] == "x" || header.fields[i] == "X") x_idx = i;
+        else if (header.fields[i] == "y" || header.fields[i] == "Y") y_idx = i;
+        else if (header.fields[i] == "z" || header.fields[i] == "Z") z_idx = i;
+    }
+    
+    if (x_idx >= 0 && y_idx >= 0 && z_idx >= 0) {
+        has_xyz = true;
+    }
+    
+    if (!has_xyz) {
+        // If no field names, assume first 3 fields are x, y, z
+        if (header.fields.size() >= 3) {
+            x_idx = 0;
+            y_idx = 1;
+            z_idx = 2;
+            has_xyz = true;
+        } else {
+            std::cerr << "Error: PCD file does not contain x, y, z fields" << std::endl;
+            return false;
+        }
+    }
+    
+    // For binary format, data is typically stored as a continuous block
+    // Common format: each point is stored as consecutive floats
+    int fields_per_point = header.fields.empty() ? 3 : header.fields.size();
+    
+    // Read binary data
+    for (int i = 0; i < header.points; ++i) {
+        std::vector<float> point_data(fields_per_point);
+        
+        // Read all fields for this point
+        file.read(reinterpret_cast<char*>(point_data.data()), fields_per_point * sizeof(float));
+        
+        if (file.eof() && i == header.points - 1) {
+            // EOF is ok for the last point
+            break;
+        }
+        
+        if (!file.good()) {
+            std::cerr << "Error: Failed to read binary data at point " << i 
+                      << " (read " << cloud.points.size() << " points so far)" << std::endl;
+            // Return true if we read at least some points
+            return !cloud.points.empty();
+        }
+        
+        // Extract x, y, z values
+        Point3D point;
+        point.x = point_data[x_idx];
+        point.y = point_data[y_idx];
+        point.z = point_data[z_idx];
+        
+        // Skip invalid points (NaN or Inf)
+        if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z)) {
+            cloud.points.push_back(point);
+        }
+    }
+    
+    // Log actual points read
+    if (cloud.points.size() != static_cast<size_t>(header.points)) {
+        std::cerr << "Info: Expected " << header.points << " points, read " 
+                  << cloud.points.size() << " valid points" << std::endl;
+    }
+    
+    return !cloud.points.empty();
 }
 
 } // namespace pointcloud_compressor
