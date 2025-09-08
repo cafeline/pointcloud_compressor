@@ -41,6 +41,7 @@ private:
     static bool parseHeaderInternal(std::ifstream& file, PlyHeader& header);
     static bool readAsciiData(std::ifstream& file, PointCloud& cloud, const PlyHeader& header);
     static bool readBinaryData(std::ifstream& file, PointCloud& cloud, const PlyHeader& header);
+    static bool readBinaryDataMmap(const std::string& filename, PointCloud& cloud, const PlyHeader& header, size_t header_size);
     static bool writeHeader(std::ofstream& file, const PointCloud& cloud);
     static bool writeAsciiData(std::ofstream& file, const PointCloud& cloud);
     static bool isValidPropertySet(const std::vector<std::string>& properties);

@@ -3,6 +3,12 @@
 #include <sstream>
 #include <algorithm>
 #include <filesystem>
+#include <vector>
+#include <cstring>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 namespace pointcloud_compressor {
 
@@ -57,7 +63,20 @@ bool PlyIO::readPlyFile(const std::string& filename, PointCloud& cloud) {
     if (header.format == "ascii") {
         return readAsciiData(file, cloud, header);
     } else {
-        return readBinaryData(file, cloud, header);
+        // Try memory-mapped I/O for large binary files
+        size_t header_size = file.tellg();
+        file.close();
+        
+        // Get file size
+        struct stat st;
+        if (stat(filename.c_str(), &st) == 0 && st.st_size > 10 * 1024 * 1024) { // Use mmap for files > 10MB
+            return readBinaryDataMmap(filename, cloud, header, header_size);
+        } else {
+            // Reopen for small files
+            file.open(filename, std::ios::binary);
+            file.seekg(header_size);
+            return readBinaryData(file, cloud, header);
+        }
     }
 }
 
@@ -202,29 +221,57 @@ bool PlyIO::parseHeaderInternal(std::ifstream& file, PlyHeader& header) {
 bool PlyIO::readAsciiData(std::ifstream& file, PointCloud& cloud, const PlyHeader& header) {
     cloud.points.reserve(header.vertex_count);
     
-    std::string line;
+    // Disable C++ stream synchronization with C streams for better performance
+    std::ios_base::sync_with_stdio(false);
+    
+    // Read entire file into buffer for faster parsing
+    file.seekg(0, std::ios::end);
+    size_t file_size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    
+    // Skip to current position after header
+    std::streampos current_pos = file.tellg();
+    
+    std::vector<char> buffer(file_size - current_pos);
+    file.read(buffer.data(), buffer.size());
+    
+    // Parse from buffer
+    const char* ptr = buffer.data();
+    const char* end = ptr + buffer.size();
     int points_read = 0;
     
-    while (std::getline(file, line) && points_read < header.vertex_count) {
-        line.erase(line.find_last_not_of(" \n\r\t") + 1);
-        if (line.empty()) continue;
-        
-        std::istringstream iss(line);
+    while (ptr < end && points_read < header.vertex_count) {
         float x, y, z;
         
-        if (!(iss >> x >> y >> z)) {
-            std::cerr << "Failed to parse vertex data at line " << points_read + 1 << std::endl;
-            return false;
-        }
+        // Fast float parsing
+        char* next;
+        x = std::strtof(ptr, &next);
+        if (next == ptr) break;
+        ptr = next;
+        
+        y = std::strtof(ptr, &next);
+        if (next == ptr) break;
+        ptr = next;
+        
+        z = std::strtof(ptr, &next);
+        if (next == ptr) break;
+        ptr = next;
         
         cloud.points.emplace_back(x, y, z);
         points_read++;
+        
+        // Skip to next line
+        while (ptr < end && *ptr != '\n') ptr++;
+        if (ptr < end) ptr++; // Skip newline
     }
     
     if (points_read != header.vertex_count) {
         std::cerr << "Expected " << header.vertex_count << " vertices, but read " << points_read << std::endl;
         return false;
     }
+    
+    // Re-enable synchronization
+    std::ios_base::sync_with_stdio(true);
     
     return true;
 }
@@ -278,22 +325,94 @@ bool PlyIO::isBinaryFormat(const std::string& format) {
 bool PlyIO::readBinaryData(std::ifstream& file, PointCloud& cloud, const PlyHeader& header) {
     cloud.points.reserve(header.vertex_count);
     
-    // Read binary vertex data
-    for (int i = 0; i < header.vertex_count; ++i) {
-        float x, y, z;
+    // Calculate buffer size (3 floats per vertex)
+    const size_t bytes_per_vertex = 3 * sizeof(float);
+    const size_t total_bytes = header.vertex_count * bytes_per_vertex;
+    
+    // Allocate buffer for batch reading
+    const size_t buffer_size = std::min(total_bytes, size_t(100 * 1024 * 1024)); // 100MB buffer
+    std::vector<char> buffer(buffer_size);
+    
+    size_t vertices_read = 0;
+    
+    while (vertices_read < header.vertex_count) {
+        // Calculate how many vertices to read in this batch
+        size_t vertices_in_batch = std::min(
+            buffer_size / bytes_per_vertex,
+            size_t(header.vertex_count - vertices_read)
+        );
+        size_t bytes_to_read = vertices_in_batch * bytes_per_vertex;
         
-        // Read 3 floats (12 bytes) in little endian format
-        file.read(reinterpret_cast<char*>(&x), sizeof(float));
-        file.read(reinterpret_cast<char*>(&y), sizeof(float));
-        file.read(reinterpret_cast<char*>(&z), sizeof(float));
-        
-        if (!file.good()) {
-            std::cerr << "Failed to read binary vertex data at vertex " << i << std::endl;
+        // Read batch into buffer
+        file.read(buffer.data(), bytes_to_read);
+        if (!file.good() && !file.eof()) {
+            std::cerr << "Failed to read binary vertex data at vertex " << vertices_read << std::endl;
             return false;
         }
         
-        cloud.points.emplace_back(x, y, z);
+        // Process buffer
+        const float* float_buffer = reinterpret_cast<const float*>(buffer.data());
+        for (size_t i = 0; i < vertices_in_batch; ++i) {
+            cloud.points.emplace_back(
+                float_buffer[i * 3],
+                float_buffer[i * 3 + 1],
+                float_buffer[i * 3 + 2]
+            );
+        }
+        
+        vertices_read += vertices_in_batch;
     }
+    
+    return true;
+}
+
+bool PlyIO::readBinaryDataMmap(const std::string& filename, PointCloud& cloud, 
+                               const PlyHeader& header, size_t header_size) {
+    // Open file for memory mapping
+    int fd = open(filename.c_str(), O_RDONLY);
+    if (fd == -1) {
+        std::cerr << "Failed to open file for mmap: " << filename << std::endl;
+        return false;
+    }
+    
+    // Get file size
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+        close(fd);
+        std::cerr << "Failed to get file size for mmap: " << filename << std::endl;
+        return false;
+    }
+    
+    // Memory map the file
+    void* mapped = mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (mapped == MAP_FAILED) {
+        close(fd);
+        std::cerr << "Failed to mmap file: " << filename << std::endl;
+        return false;
+    }
+    
+    // Advise kernel about access pattern
+    madvise(mapped, st.st_size, MADV_SEQUENTIAL);
+    
+    // Reserve space for points
+    cloud.points.reserve(header.vertex_count);
+    
+    // Skip header and read vertex data
+    const char* data = static_cast<const char*>(mapped) + header_size;
+    const float* vertices = reinterpret_cast<const float*>(data);
+    
+    // Read all vertices at once
+    for (int i = 0; i < header.vertex_count; ++i) {
+        cloud.points.emplace_back(
+            vertices[i * 3],
+            vertices[i * 3 + 1],
+            vertices[i * 3 + 2]
+        );
+    }
+    
+    // Clean up
+    munmap(mapped, st.st_size);
+    close(fd);
     
     return true;
 }
