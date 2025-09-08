@@ -10,12 +10,7 @@
 #include <chrono>
 #include <mutex>
 #include <vector>
-#include <atomic>
 #include <memory>
-
-#ifdef USE_OPENMP
-#include <omp.h>
-#endif
 
 // Custom hash function for tuple<int, int, int>
 namespace std {
@@ -79,48 +74,19 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     int occupied_count = 0;
     
     if (total_voxels <= MAX_DIRECT_ARRAY_SIZE) {
-        // Use atomic array for direct indexing (much faster)
-        std::cout << "[VoxelProcessor] Using atomic array optimization (" << total_voxels << " voxels)" << std::endl;
+        // Use direct array indexing (much faster than hash map)
+        std::cout << "[VoxelProcessor] Using array optimization (" << total_voxels << " voxels)" << std::endl;
         
-        // Allocate atomic counter array
-        std::unique_ptr<std::atomic<int>[]> voxel_counts(new std::atomic<int>[total_voxels]());
-        
-        // Initialize all counters to 0
-        for (size_t i = 0; i < total_voxels; ++i) {
-            voxel_counts[i].store(0, std::memory_order_relaxed);
-        }
+        // Allocate counter array
+        std::vector<int> voxel_counts(total_voxels, 0);
         
         // Pre-compute inverse for faster division
         const float inv_voxel_size = 1.0f / voxel_size_;
         
-#ifdef USE_OPENMP
-        int num_threads = omp_get_max_threads();
-        std::cout << "[VoxelProcessor] Using OpenMP with " << num_threads << " threads (atomic operations)" << std::endl;
-        
-        #pragma omp parallel for schedule(static)
-        for (size_t i = 0; i < cloud.points.size(); ++i) {
-            const auto& point = cloud.points[i];
-            
-            // Fast voxel index calculation with multiplication instead of division
-            int x = static_cast<int>((point.x - min_pt.x) * inv_voxel_size);
-            int y = static_cast<int>((point.y - min_pt.y) * inv_voxel_size);
-            int z = static_cast<int>((point.z - min_pt.z) * inv_voxel_size);
-            
-            // Check bounds
-            if (x >= 0 && x < grid_x && y >= 0 && y < grid_y && z >= 0 && z < grid_z) {
-                size_t idx = static_cast<size_t>(z) * grid_x * grid_y + 
-                            static_cast<size_t>(y) * grid_x + 
-                            static_cast<size_t>(x);
-                
-                // Atomic increment
-                voxel_counts[idx].fetch_add(1, std::memory_order_relaxed);
-            }
-        }
-#else
         std::cout << "[VoxelProcessor] Using single-threaded processing (optimized)" << std::endl;
         
         for (const auto& point : cloud.points) {
-            // Fast voxel index calculation
+            // Fast voxel index calculation with multiplication instead of division
             int x = static_cast<int>((point.x - min_pt.x) * inv_voxel_size);
             int y = static_cast<int>((point.y - min_pt.y) * inv_voxel_size);
             int z = static_cast<int>((point.z - min_pt.z) * inv_voxel_size);
@@ -134,7 +100,6 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
                 voxel_counts[idx]++;
             }
         }
-#endif
         
         auto voxel_count_end = std::chrono::high_resolution_clock::now();
         auto voxel_count_time = std::chrono::duration_cast<std::chrono::microseconds>(voxel_count_end - voxel_count_start).count() / 1000.0;
@@ -143,9 +108,6 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
         // Set voxel occupancy based on point count threshold
         auto set_voxel_start = std::chrono::high_resolution_clock::now();
         
-#ifdef USE_OPENMP
-        #pragma omp parallel for schedule(static) reduction(+:occupied_count)
-#endif
         for (int z = 0; z < grid_z; ++z) {
             for (int y = 0; y < grid_y; ++y) {
                 for (int x = 0; x < grid_x; ++x) {
@@ -153,8 +115,7 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
                                 static_cast<size_t>(y) * grid_x + 
                                 static_cast<size_t>(x);
                     
-                    int count = voxel_counts[idx].load(std::memory_order_relaxed);
-                    if (count >= min_points_threshold_) {
+                    if (voxel_counts[idx] >= min_points_threshold_) {
                         grid.setVoxel(x, y, z, true);
                         occupied_count++;
                     }
@@ -170,42 +131,8 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     } else {
         // Fallback to hash map for very large grids
         std::cout << "[VoxelProcessor] Grid too large (" << total_voxels << " voxels), using hash map" << std::endl;
-        
-#ifdef USE_OPENMP
-        int num_threads = omp_get_max_threads();
-        std::cout << "[VoxelProcessor] Using OpenMP with " << num_threads << " threads" << std::endl;
-        
-        // Create thread-local maps
-        std::vector<std::unordered_map<std::tuple<int, int, int>, int>> thread_maps(num_threads);
-        
-        #pragma omp parallel
-        {
-            int thread_id = omp_get_thread_num();
-            auto& local_map = thread_maps[thread_id];
-            
-            #pragma omp for nowait
-            for (size_t i = 0; i < cloud.points.size(); ++i) {
-                const auto& point = cloud.points[i];
-                int x, y, z;
-                pointToVoxelIndexFast(point, min_pt, x, y, z);
-                
-                // Check bounds
-                if (x >= 0 && x < grid_x && y >= 0 && y < grid_y && z >= 0 && z < grid_z) {
-                    auto voxel_key = std::make_tuple(x, y, z);
-                    local_map[voxel_key]++;
-                }
-            }
-        }
-        
-        // Merge thread-local maps
-        std::unordered_map<std::tuple<int, int, int>, int> voxel_point_count;
-        for (const auto& thread_map : thread_maps) {
-            for (const auto& entry : thread_map) {
-                voxel_point_count[entry.first] += entry.second;
-            }
-        }
-#else
         std::cout << "[VoxelProcessor] Using single-threaded processing" << std::endl;
+        
         std::unordered_map<std::tuple<int, int, int>, int> voxel_point_count;
         voxel_point_count.reserve(cloud.points.size() / 10);  // Reserve some capacity
         
@@ -219,7 +146,6 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
                 voxel_point_count[voxel_key]++;
             }
         }
-#endif
         
         auto voxel_count_end = std::chrono::high_resolution_clock::now();
         auto voxel_count_time = std::chrono::duration_cast<std::chrono::microseconds>(voxel_count_end - voxel_count_start).count() / 1000.0;
