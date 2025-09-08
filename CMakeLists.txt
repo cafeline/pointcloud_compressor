@@ -8,6 +8,7 @@ endif()
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(OpenMP)
 
 # ROS2 dependencies
 find_package(rclcpp REQUIRED)
@@ -53,6 +54,12 @@ target_include_directories(${PROJECT_NAME}_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_compile_features(${PROJECT_NAME}_core PUBLIC cxx_std_17)
+
+# Add OpenMP support if available
+if(OpenMP_CXX_FOUND)
+  target_link_libraries(${PROJECT_NAME}_core PUBLIC OpenMP::OpenMP_CXX)
+  target_compile_definitions(${PROJECT_NAME}_core PUBLIC USE_OPENMP)
+endif()
 
 # Main executable
 add_executable(${PROJECT_NAME}_cli src/pointcloud_compressor.cpp)

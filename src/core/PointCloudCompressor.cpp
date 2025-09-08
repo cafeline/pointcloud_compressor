@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
+#include <chrono>
 
 namespace pointcloud_compressor {
 
@@ -27,40 +28,61 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
     }
     
     try {
+        auto total_start = std::chrono::high_resolution_clock::now();
+        
         // Step 1: Load point cloud
+        auto load_start = std::chrono::high_resolution_clock::now();
         PointCloud cloud;
         if (!loadPointCloud(input_file, cloud)) {
             result.error_message = "Failed to load point cloud";
             return result;
         }
+        auto load_end = std::chrono::high_resolution_clock::now();
+        auto load_time = std::chrono::duration_cast<std::chrono::microseconds>(load_end - load_start).count() / 1000.0;
         
         result.original_size = cloud.points.size() * sizeof(Point3D);
+        std::cout << "[PointCloudCompressor] Load point cloud: " << load_time << " ms (" 
+                  << cloud.points.size() << " points)" << std::endl;
         
         // Step 2: Voxelize and divide into blocks
+        auto voxelize_start = std::chrono::high_resolution_clock::now();
         std::vector<VoxelBlock> blocks;
         VoxelGrid grid;
         if (!voxelizeAndDivideWithGrid(cloud, blocks, grid)) {
             result.error_message = "Failed to voxelize point cloud";
             return result;
         }
+        auto voxelize_end = std::chrono::high_resolution_clock::now();
+        auto voxelize_time = std::chrono::duration_cast<std::chrono::microseconds>(voxelize_end - voxelize_start).count() / 1000.0;
         
         result.num_blocks = blocks.size();
         result.voxel_grid = grid;
+        std::cout << "[PointCloudCompressor] Voxelize and divide: " << voxelize_time << " ms (" 
+                  << blocks.size() << " blocks)" << std::endl;
         
         // Step 3: Build dictionary and encode
+        auto dict_start = std::chrono::high_resolution_clock::now();
         std::vector<uint16_t> indices;
         if (!buildDictionaryAndEncode(blocks, indices)) {
             result.error_message = "Failed to build dictionary";
             return result;
         }
+        auto dict_end = std::chrono::high_resolution_clock::now();
+        auto dict_time = std::chrono::duration_cast<std::chrono::microseconds>(dict_end - dict_start).count() / 1000.0;
         
         result.num_unique_patterns = dictionary_builder_->getUniquePatternCount();
+        std::cout << "[PointCloudCompressor] Build dictionary: " << dict_time << " ms (" 
+                  << result.num_unique_patterns << " unique patterns)" << std::endl;
         
         // Step 4: Save compressed data with actual grid metadata
+        auto save_start = std::chrono::high_resolution_clock::now();
         if (!saveCompressionData(output_prefix, indices, grid)) {
             result.error_message = "Failed to save compressed data";
             return result;
         }
+        auto save_end = std::chrono::high_resolution_clock::now();
+        auto save_time = std::chrono::duration_cast<std::chrono::microseconds>(save_end - save_start).count() / 1000.0;
+        std::cout << "[PointCloudCompressor] Save data: " << save_time << " ms" << std::endl;
         
         // Store actual compression data for ROS message
         result.block_indices = indices;
@@ -114,6 +136,11 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
                                   static_cast<float>(result.original_size);
         result.success = true;
         
+        auto total_end = std::chrono::high_resolution_clock::now();
+        auto total_time = std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_start).count() / 1000.0;
+        std::cout << "[PointCloudCompressor] Total compression time: " << total_time << " ms" << std::endl;
+        std::cout << "[PointCloudCompressor] Compression ratio: " << result.compression_ratio << std::endl;
+        
     } catch (const std::exception& e) {
         result.error_message = "Exception during compression: " + std::string(e.what());
     }
@@ -124,23 +151,44 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
 bool PointCloudCompressor::decompress(const std::string& compressed_prefix, 
                                      const std::string& output_file) {
     try {
+        auto total_start = std::chrono::high_resolution_clock::now();
+        
         // Step 1: Load compression data
+        auto load_start = std::chrono::high_resolution_clock::now();
         std::vector<uint16_t> indices;
         VoxelGrid grid;
         if (!loadCompressionData(compressed_prefix, indices, grid)) {
             std::cerr << "Failed to load compression data" << std::endl;
             return false;
         }
+        auto load_end = std::chrono::high_resolution_clock::now();
+        auto load_time = std::chrono::duration_cast<std::chrono::microseconds>(load_end - load_start).count() / 1000.0;
+        std::cout << "[PointCloudCompressor] Load compressed data: " << load_time << " ms" << std::endl;
         
         // Step 2: Reconstruct point cloud
+        auto reconstruct_start = std::chrono::high_resolution_clock::now();
         PointCloud cloud;
         if (!reconstructPointCloud(indices, grid, cloud)) {
             std::cerr << "Failed to reconstruct point cloud" << std::endl;
             return false;
         }
+        auto reconstruct_end = std::chrono::high_resolution_clock::now();
+        auto reconstruct_time = std::chrono::duration_cast<std::chrono::microseconds>(reconstruct_end - reconstruct_start).count() / 1000.0;
+        std::cout << "[PointCloudCompressor] Reconstruct point cloud: " << reconstruct_time << " ms (" 
+                  << cloud.points.size() << " points)" << std::endl;
         
         // Step 3: Save reconstructed point cloud
-        return PointCloudIO::savePointCloud(output_file, cloud);
+        auto save_start = std::chrono::high_resolution_clock::now();
+        bool result = PointCloudIO::savePointCloud(output_file, cloud);
+        auto save_end = std::chrono::high_resolution_clock::now();
+        auto save_time = std::chrono::duration_cast<std::chrono::microseconds>(save_end - save_start).count() / 1000.0;
+        std::cout << "[PointCloudCompressor] Save point cloud: " << save_time << " ms" << std::endl;
+        
+        auto total_end = std::chrono::high_resolution_clock::now();
+        auto total_time = std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_start).count() / 1000.0;
+        std::cout << "[PointCloudCompressor] Total decompression time: " << total_time << " ms" << std::endl;
+        
+        return result;
         
     } catch (const std::exception& e) {
         std::cerr << "Exception during decompression: " << e.what() << std::endl;

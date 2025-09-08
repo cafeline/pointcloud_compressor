@@ -5,8 +5,30 @@
 #include <limits>
 #include <fstream>
 #include <iostream>
-#include <map>
+#include <unordered_map>
 #include <tuple>
+#include <chrono>
+#include <mutex>
+#include <vector>
+#include <atomic>
+#include <memory>
+
+#ifdef USE_OPENMP
+#include <omp.h>
+#endif
+
+// Custom hash function for tuple<int, int, int>
+namespace std {
+    template<>
+    struct hash<std::tuple<int, int, int>> {
+        size_t operator()(const std::tuple<int, int, int>& t) const {
+            size_t h1 = std::hash<int>{}(std::get<0>(t));
+            size_t h2 = std::hash<int>{}(std::get<1>(t));
+            size_t h3 = std::hash<int>{}(std::get<2>(t));
+            return h1 ^ (h2 << 1) ^ (h3 << 2);
+        }
+    };
+}
 
 namespace pointcloud_compressor {
 
@@ -21,46 +43,220 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
         return false;
     }
     
+    auto total_start = std::chrono::high_resolution_clock::now();
+    
     // Compute bounding box
+    auto bbox_start = std::chrono::high_resolution_clock::now();
     Point3D min_pt, max_pt;
     computeBoundingBox(cloud, min_pt, max_pt);
+    auto bbox_end = std::chrono::high_resolution_clock::now();
+    auto bbox_time = std::chrono::duration_cast<std::chrono::microseconds>(bbox_end - bbox_start).count() / 1000.0;
     
     // Calculate grid dimensions
     int grid_x = static_cast<int>(std::ceil((max_pt.x - min_pt.x) / voxel_size_)) + 1;
     int grid_y = static_cast<int>(std::ceil((max_pt.y - min_pt.y) / voxel_size_)) + 1;
     int grid_z = static_cast<int>(std::ceil((max_pt.z - min_pt.z) / voxel_size_)) + 1;
     
+    std::cout << "[VoxelProcessor] Grid dimensions: " << grid_x << "x" << grid_y << "x" << grid_z 
+              << " (" << (grid_x * grid_y * grid_z) << " voxels)" << std::endl;
+    std::cout << "[VoxelProcessor] Bounding box calculation: " << bbox_time << " ms" << std::endl;
+    
     // Initialize grid
+    auto grid_init_start = std::chrono::high_resolution_clock::now();
     grid.initialize(grid_x, grid_y, grid_z, voxel_size_);
     grid.setOrigin(min_pt.x, min_pt.y, min_pt.z);
+    auto grid_init_end = std::chrono::high_resolution_clock::now();
+    auto grid_init_time = std::chrono::duration_cast<std::chrono::microseconds>(grid_init_end - grid_init_start).count() / 1000.0;
+    std::cout << "[VoxelProcessor] Grid initialization: " << grid_init_time << " ms" << std::endl;
     
-    // Count points per voxel
-    std::map<std::tuple<int, int, int>, int> voxel_point_count;
+    // Count points per voxel using parallel processing
+    auto voxel_count_start = std::chrono::high_resolution_clock::now();
     
-    for (const auto& point : cloud.points) {
-        int x, y, z;
-        if (pointToVoxelIndex(point, min_pt, x, y, z, grid_x, grid_y, grid_z) >= 0) {
-            auto voxel_key = std::make_tuple(x, y, z);
-            voxel_point_count[voxel_key]++;
-        }
-    }
+    // Choose between atomic array (for reasonable grid sizes) or hash map
+    size_t total_voxels = static_cast<size_t>(grid_x) * grid_y * grid_z;
+    const size_t MAX_DIRECT_ARRAY_SIZE = 100000000; // 100M voxels = ~400MB for atomic<int>
     
-    // Set voxel occupancy based on point count threshold
-    for (const auto& entry : voxel_point_count) {
-        int x = std::get<0>(entry.first);
-        int y = std::get<1>(entry.first);
-        int z = std::get<2>(entry.first);
-        int point_count = entry.second;
+    int occupied_count = 0;
+    
+    if (total_voxels <= MAX_DIRECT_ARRAY_SIZE) {
+        // Use atomic array for direct indexing (much faster)
+        std::cout << "[VoxelProcessor] Using atomic array optimization (" << total_voxels << " voxels)" << std::endl;
         
-        if (point_count >= min_points_threshold_) {
-            grid.setVoxel(x, y, z, true);
+        // Allocate atomic counter array
+        std::unique_ptr<std::atomic<int>[]> voxel_counts(new std::atomic<int>[total_voxels]());
+        
+        // Initialize all counters to 0
+        for (size_t i = 0; i < total_voxels; ++i) {
+            voxel_counts[i].store(0, std::memory_order_relaxed);
         }
+        
+        // Pre-compute inverse for faster division
+        const float inv_voxel_size = 1.0f / voxel_size_;
+        
+#ifdef USE_OPENMP
+        int num_threads = omp_get_max_threads();
+        std::cout << "[VoxelProcessor] Using OpenMP with " << num_threads << " threads (atomic operations)" << std::endl;
+        
+        #pragma omp parallel for schedule(static)
+        for (size_t i = 0; i < cloud.points.size(); ++i) {
+            const auto& point = cloud.points[i];
+            
+            // Fast voxel index calculation with multiplication instead of division
+            int x = static_cast<int>((point.x - min_pt.x) * inv_voxel_size);
+            int y = static_cast<int>((point.y - min_pt.y) * inv_voxel_size);
+            int z = static_cast<int>((point.z - min_pt.z) * inv_voxel_size);
+            
+            // Check bounds
+            if (x >= 0 && x < grid_x && y >= 0 && y < grid_y && z >= 0 && z < grid_z) {
+                size_t idx = static_cast<size_t>(z) * grid_x * grid_y + 
+                            static_cast<size_t>(y) * grid_x + 
+                            static_cast<size_t>(x);
+                
+                // Atomic increment
+                voxel_counts[idx].fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+#else
+        std::cout << "[VoxelProcessor] Using single-threaded processing (optimized)" << std::endl;
+        
+        for (const auto& point : cloud.points) {
+            // Fast voxel index calculation
+            int x = static_cast<int>((point.x - min_pt.x) * inv_voxel_size);
+            int y = static_cast<int>((point.y - min_pt.y) * inv_voxel_size);
+            int z = static_cast<int>((point.z - min_pt.z) * inv_voxel_size);
+            
+            // Check bounds
+            if (x >= 0 && x < grid_x && y >= 0 && y < grid_y && z >= 0 && z < grid_z) {
+                size_t idx = static_cast<size_t>(z) * grid_x * grid_y + 
+                            static_cast<size_t>(y) * grid_x + 
+                            static_cast<size_t>(x);
+                
+                voxel_counts[idx]++;
+            }
+        }
+#endif
+        
+        auto voxel_count_end = std::chrono::high_resolution_clock::now();
+        auto voxel_count_time = std::chrono::duration_cast<std::chrono::microseconds>(voxel_count_end - voxel_count_start).count() / 1000.0;
+        std::cout << "[VoxelProcessor] Voxel counting: " << voxel_count_time << " ms" << std::endl;
+        
+        // Set voxel occupancy based on point count threshold
+        auto set_voxel_start = std::chrono::high_resolution_clock::now();
+        
+#ifdef USE_OPENMP
+        #pragma omp parallel for schedule(static) reduction(+:occupied_count)
+#endif
+        for (int z = 0; z < grid_z; ++z) {
+            for (int y = 0; y < grid_y; ++y) {
+                for (int x = 0; x < grid_x; ++x) {
+                    size_t idx = static_cast<size_t>(z) * grid_x * grid_y + 
+                                static_cast<size_t>(y) * grid_x + 
+                                static_cast<size_t>(x);
+                    
+                    int count = voxel_counts[idx].load(std::memory_order_relaxed);
+                    if (count >= min_points_threshold_) {
+                        grid.setVoxel(x, y, z, true);
+                        occupied_count++;
+                    }
+                }
+            }
+        }
+        
+        auto set_voxel_end = std::chrono::high_resolution_clock::now();
+        auto set_voxel_time = std::chrono::duration_cast<std::chrono::microseconds>(set_voxel_end - set_voxel_start).count() / 1000.0;
+        std::cout << "[VoxelProcessor] Setting voxel occupancy: " << set_voxel_time << " ms (" 
+                  << occupied_count << " voxels set)" << std::endl;
+        
+    } else {
+        // Fallback to hash map for very large grids
+        std::cout << "[VoxelProcessor] Grid too large (" << total_voxels << " voxels), using hash map" << std::endl;
+        
+#ifdef USE_OPENMP
+        int num_threads = omp_get_max_threads();
+        std::cout << "[VoxelProcessor] Using OpenMP with " << num_threads << " threads" << std::endl;
+        
+        // Create thread-local maps
+        std::vector<std::unordered_map<std::tuple<int, int, int>, int>> thread_maps(num_threads);
+        
+        #pragma omp parallel
+        {
+            int thread_id = omp_get_thread_num();
+            auto& local_map = thread_maps[thread_id];
+            
+            #pragma omp for nowait
+            for (size_t i = 0; i < cloud.points.size(); ++i) {
+                const auto& point = cloud.points[i];
+                int x, y, z;
+                pointToVoxelIndexFast(point, min_pt, x, y, z);
+                
+                // Check bounds
+                if (x >= 0 && x < grid_x && y >= 0 && y < grid_y && z >= 0 && z < grid_z) {
+                    auto voxel_key = std::make_tuple(x, y, z);
+                    local_map[voxel_key]++;
+                }
+            }
+        }
+        
+        // Merge thread-local maps
+        std::unordered_map<std::tuple<int, int, int>, int> voxel_point_count;
+        for (const auto& thread_map : thread_maps) {
+            for (const auto& entry : thread_map) {
+                voxel_point_count[entry.first] += entry.second;
+            }
+        }
+#else
+        std::cout << "[VoxelProcessor] Using single-threaded processing" << std::endl;
+        std::unordered_map<std::tuple<int, int, int>, int> voxel_point_count;
+        voxel_point_count.reserve(cloud.points.size() / 10);  // Reserve some capacity
+        
+        for (const auto& point : cloud.points) {
+            int x, y, z;
+            pointToVoxelIndexFast(point, min_pt, x, y, z);
+            
+            // Check bounds
+            if (x >= 0 && x < grid_x && y >= 0 && y < grid_y && z >= 0 && z < grid_z) {
+                auto voxel_key = std::make_tuple(x, y, z);
+                voxel_point_count[voxel_key]++;
+            }
+        }
+#endif
+        
+        auto voxel_count_end = std::chrono::high_resolution_clock::now();
+        auto voxel_count_time = std::chrono::duration_cast<std::chrono::microseconds>(voxel_count_end - voxel_count_start).count() / 1000.0;
+        std::cout << "[VoxelProcessor] Voxel counting: " << voxel_count_time << " ms (" 
+                  << voxel_point_count.size() << " occupied voxels)" << std::endl;
+        
+        // Set voxel occupancy based on point count threshold
+        auto set_voxel_start = std::chrono::high_resolution_clock::now();
+        
+        for (const auto& entry : voxel_point_count) {
+            int x = std::get<0>(entry.first);
+            int y = std::get<1>(entry.first);
+            int z = std::get<2>(entry.first);
+            int point_count = entry.second;
+            
+            if (point_count >= min_points_threshold_) {
+                grid.setVoxel(x, y, z, true);
+                occupied_count++;
+            }
+        }
+        
+        auto set_voxel_end = std::chrono::high_resolution_clock::now();
+        auto set_voxel_time = std::chrono::duration_cast<std::chrono::microseconds>(set_voxel_end - set_voxel_start).count() / 1000.0;
+        std::cout << "[VoxelProcessor] Setting voxel occupancy: " << set_voxel_time << " ms (" 
+                  << occupied_count << " voxels set)" << std::endl;
     }
+    
+    auto total_end = std::chrono::high_resolution_clock::now();
+    auto total_time = std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_start).count() / 1000.0;
+    std::cout << "[VoxelProcessor] Total voxelization time: " << total_time << " ms" << std::endl;
     
     return true;
 }
 
 bool VoxelProcessor::divideIntoBlocks(const VoxelGrid& grid, std::vector<VoxelBlock>& blocks) {
+    auto start = std::chrono::high_resolution_clock::now();
+    
     blocks.clear();
     
     VoxelCoord dims = grid.getDimensions();
@@ -70,7 +266,27 @@ bool VoxelProcessor::divideIntoBlocks(const VoxelGrid& grid, std::vector<VoxelBl
     int y_blocks = (dims.y + block_size_ - 1) / block_size_;
     int z_blocks = (dims.z + block_size_ - 1) / block_size_;
     
-    // Extract blocks
+    int total_blocks = x_blocks * y_blocks * z_blocks;
+    blocks.reserve(total_blocks);
+    
+    std::cout << "[VoxelProcessor] Dividing into " << x_blocks << "x" << y_blocks << "x" << z_blocks 
+              << " = " << total_blocks << " blocks" << std::endl;
+    
+#ifdef USE_OPENMP
+    // Pre-allocate all blocks
+    blocks.resize(total_blocks);
+    
+    #pragma omp parallel for collapse(3)
+    for (int bz = 0; bz < z_blocks; ++bz) {
+        for (int by = 0; by < y_blocks; ++by) {
+            for (int bx = 0; bx < x_blocks; ++bx) {
+                int idx = bz * (y_blocks * x_blocks) + by * x_blocks + bx;
+                blocks[idx] = grid.extractBlock(bx, by, bz, block_size_);
+            }
+        }
+    }
+#else
+    // Extract blocks sequentially
     for (int bz = 0; bz < z_blocks; ++bz) {
         for (int by = 0; by < y_blocks; ++by) {
             for (int bx = 0; bx < x_blocks; ++bx) {
@@ -79,6 +295,11 @@ bool VoxelProcessor::divideIntoBlocks(const VoxelGrid& grid, std::vector<VoxelBl
             }
         }
     }
+#endif
+    
+    auto end = std::chrono::high_resolution_clock::now();
+    auto time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
+    std::cout << "[VoxelProcessor] Block division time: " << time << " ms" << std::endl;
     
     return !blocks.empty();
 }

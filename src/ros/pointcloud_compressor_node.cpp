@@ -172,8 +172,18 @@ private:
     
     void publishPatternDictionary(const pointcloud_compressor::CompressionResult& result)
     {
+        auto start = std::chrono::high_resolution_clock::now();
         auto msg = createPatternDictionaryMessage(result);
+        auto create_end = std::chrono::high_resolution_clock::now();
+        
         pattern_dict_pub_->publish(msg);
+        auto publish_end = std::chrono::high_resolution_clock::now();
+        
+        auto create_time = std::chrono::duration_cast<std::chrono::microseconds>(create_end - start).count() / 1000.0;
+        auto publish_time = std::chrono::duration_cast<std::chrono::microseconds>(publish_end - create_end).count() / 1000.0;
+        
+        RCLCPP_INFO(this->get_logger(), "[ROS Node] Create message: %.2f ms, Publish: %.2f ms", 
+                    create_time, publish_time);
     }
 
     pointcloud_compressor::msg::PatternDictionary createPatternDictionaryMessage(

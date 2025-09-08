@@ -79,6 +79,14 @@ private:
                          int grid_x, int grid_y, int grid_z);
     
     Point3D voxelToPoint(int x, int y, int z, const Point3D& min_pt);
+    
+    // Inline function for performance-critical operations
+    inline void pointToVoxelIndexFast(const Point3D& point, const Point3D& min_pt,
+                                      int& x, int& y, int& z) const {
+        x = static_cast<int>((point.x - min_pt.x) / voxel_size_);
+        y = static_cast<int>((point.y - min_pt.y) / voxel_size_);
+        z = static_cast<int>((point.z - min_pt.z) / voxel_size_);
+    }
 };
 
 } // namespace pointcloud_compressor
