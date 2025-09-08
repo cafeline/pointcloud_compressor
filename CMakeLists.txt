@@ -138,6 +138,27 @@ if(BUILD_TESTING)
   ament_add_gtest(test_integration test/test_integration.cpp)
   target_link_libraries(test_integration ${PROJECT_NAME}_core)
   target_compile_definitions(test_integration PRIVATE TEST_DATA_DIR="${TEST_DATA_DIR}")
+  
+  # Large Pattern Indices Test
+  ament_add_gtest(test_large_pattern_indices test/test_large_pattern_indices.cpp)
+  target_link_libraries(test_large_pattern_indices ${PROJECT_NAME}_core)
+  
+  # Dynamic Index Encoding Test
+  ament_add_gtest(test_dynamic_index_encoding test/test_dynamic_index_encoding.cpp)
+  target_link_libraries(test_dynamic_index_encoding ${PROJECT_NAME}_core)
+  
+  # Decompression Test
+  ament_add_gtest(test_decompression test/test_decompression.cpp)
+  target_link_libraries(test_decompression ${PROJECT_NAME}_core)
+  
+  # ROS Message Utils Test
+  ament_add_gtest(test_ros_message_utils test/test_ros_message_utils.cpp)
+  target_link_libraries(test_ros_message_utils 
+    ${PROJECT_NAME}_core
+    ${PROJECT_NAME}__rosidl_typesupport_cpp
+  )
+  ament_target_dependencies(test_ros_message_utils ${dependencies})
+  add_dependencies(test_ros_message_utils ${PROJECT_NAME}__rosidl_typesupport_cpp)
 endif()
 
 # Export dependencies

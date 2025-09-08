@@ -27,9 +27,22 @@ bool PatternEncoder::decodePatterns(const std::string& input_filename,
     return readIndices(input_filename, indices);
 }
 
+bool PatternEncoder::encodePatternsAuto(const std::vector<uint16_t>& indices,
+                                       const std::string& output_filename) {
+    // Automatically choose 8-bit or 16-bit based on max value
+    if (canUse8bitIndices(indices)) {
+        return writeIndices8bit(indices, output_filename);
+    } else {
+        return writeIndices16bit(indices, output_filename);
+    }
+}
+
 bool PatternEncoder::canUse8bitIndices(const std::vector<uint16_t>& indices) {
+    if (indices.empty()) {
+        return true;  // Empty indices can use 8-bit
+    }
     auto max_it = std::max_element(indices.begin(), indices.end());
-    return max_it != indices.end() && *max_it < 256;
+    return *max_it < 256;
 }
 
 bool PatternEncoder::writeIndices16bit(const std::vector<uint16_t>& indices, 

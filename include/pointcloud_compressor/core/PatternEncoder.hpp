@@ -20,6 +20,10 @@ public:
     bool encodePatterns8bit(const std::vector<uint16_t>& indices, 
                            const std::string& output_filename);
     
+    // Automatically choose 8-bit or 16-bit encoding based on max index value
+    bool encodePatternsAuto(const std::vector<uint16_t>& indices,
+                           const std::string& output_filename);
+    
     // Decode patterns
     bool decodePatterns(const std::string& input_filename, 
                        std::vector<uint16_t>& indices);

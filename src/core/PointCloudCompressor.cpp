@@ -56,9 +56,8 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
         
         result.num_unique_patterns = dictionary_builder_->getUniquePatternCount();
         
-        // Step 4: Save compressed data  
-        VoxelGrid dummy_grid; // TODO: Save actual grid metadata
-        if (!saveCompressionData(output_prefix, indices, dummy_grid)) {
+        // Step 4: Save compressed data with actual grid metadata
+        if (!saveCompressionData(output_prefix, indices, grid)) {
             result.error_message = "Failed to save compressed data";
             return result;
         }
@@ -247,12 +246,35 @@ bool PointCloudCompressor::saveCompressionData(const std::string& output_prefix,
         return false;
     }
     
-    // Save indices
-    if (settings_.use_8bit_indices && pattern_encoder_->canUse8bitIndices(indices)) {
-        return pattern_encoder_->encodePatterns8bit(indices, getIndicesFilename(output_prefix));
-    } else {
-        return pattern_encoder_->encodePatterns(indices, getIndicesFilename(output_prefix));
+    // Save indices - automatically choose 8-bit or 16-bit based on max index value
+    if (!pattern_encoder_->encodePatternsAuto(indices, getIndicesFilename(output_prefix))) {
+        return false;
     }
+    
+    // Save metadata
+    std::ofstream meta_file(getMetadataFilename(output_prefix), std::ios::binary);
+    if (!meta_file.is_open()) {
+        return false;
+    }
+    
+    // Write metadata
+    meta_file.write(reinterpret_cast<const char*>(&settings_.voxel_size), sizeof(settings_.voxel_size));
+    meta_file.write(reinterpret_cast<const char*>(&settings_.block_size), sizeof(settings_.block_size));
+    
+    // Write grid dimensions
+    VoxelCoord dims = grid.getDimensions();
+    meta_file.write(reinterpret_cast<const char*>(&dims.x), sizeof(dims.x));
+    meta_file.write(reinterpret_cast<const char*>(&dims.y), sizeof(dims.y));
+    meta_file.write(reinterpret_cast<const char*>(&dims.z), sizeof(dims.z));
+    
+    // Write grid origin
+    float origin_x, origin_y, origin_z;
+    grid.getOrigin(origin_x, origin_y, origin_z);
+    meta_file.write(reinterpret_cast<const char*>(&origin_x), sizeof(origin_x));
+    meta_file.write(reinterpret_cast<const char*>(&origin_y), sizeof(origin_y));
+    meta_file.write(reinterpret_cast<const char*>(&origin_z), sizeof(origin_z));
+    
+    return meta_file.good();
 }
 
 bool PointCloudCompressor::loadCompressionData(const std::string& compressed_prefix,
@@ -264,21 +286,112 @@ bool PointCloudCompressor::loadCompressionData(const std::string& compressed_pre
     }
     
     // Load indices
-    return pattern_encoder_->decodePatterns(getIndicesFilename(compressed_prefix), indices);
+    if (!pattern_encoder_->decodePatterns(getIndicesFilename(compressed_prefix), indices)) {
+        return false;
+    }
+    
+    // Load metadata
+    std::ifstream meta_file(getMetadataFilename(compressed_prefix), std::ios::binary);
+    if (!meta_file.is_open()) {
+        return false;
+    }
+    
+    // Read metadata
+    float voxel_size;
+    int block_size;
+    meta_file.read(reinterpret_cast<char*>(&voxel_size), sizeof(voxel_size));
+    meta_file.read(reinterpret_cast<char*>(&block_size), sizeof(block_size));
+    
+    // Read grid dimensions
+    int dim_x, dim_y, dim_z;
+    meta_file.read(reinterpret_cast<char*>(&dim_x), sizeof(dim_x));
+    meta_file.read(reinterpret_cast<char*>(&dim_y), sizeof(dim_y));
+    meta_file.read(reinterpret_cast<char*>(&dim_z), sizeof(dim_z));
+    
+    // Read grid origin
+    float origin_x, origin_y, origin_z;
+    meta_file.read(reinterpret_cast<char*>(&origin_x), sizeof(origin_x));
+    meta_file.read(reinterpret_cast<char*>(&origin_y), sizeof(origin_y));
+    meta_file.read(reinterpret_cast<char*>(&origin_z), sizeof(origin_z));
+    
+    if (!meta_file.good()) {
+        return false;
+    }
+    
+    // Initialize grid with loaded metadata
+    grid.initialize(dim_x, dim_y, dim_z, voxel_size);
+    grid.setOrigin(origin_x, origin_y, origin_z);
+    
+    // Update compressor settings
+    settings_.voxel_size = voxel_size;
+    settings_.block_size = block_size;
+    voxel_processor_->setVoxelSize(voxel_size);
+    voxel_processor_->setBlockSize(block_size);
+    
+    return true;
 }
 
 bool PointCloudCompressor::reconstructPointCloud(const std::vector<uint16_t>& indices,
-                                                const VoxelGrid& grid,
+                                                const VoxelGrid& metadata_grid,
                                                 PointCloud& cloud) {
-    // TODO: Implement reconstruction from indices and dictionary
-    // This is a simplified stub - full implementation would:
-    // 1. Get unique patterns from dictionary
-    // 2. Reconstruct blocks using indices
-    // 3. Rebuild voxel grid from blocks
-    // 4. Extract points from voxel grid
-    
     cloud.clear();
-    return false;  // Not implemented yet
+    
+    // Get unique patterns from dictionary
+    const auto& unique_patterns = dictionary_builder_->getUniquePatterns();
+    
+    if (unique_patterns.empty() && !indices.empty()) {
+        std::cerr << "Error: Dictionary is empty but indices are not" << std::endl;
+        return false;
+    }
+    
+    // Create new grid for reconstruction
+    VoxelGrid reconstructed_grid;
+    VoxelCoord dims = metadata_grid.getDimensions();
+    float voxel_size = metadata_grid.getVoxelSize();
+    reconstructed_grid.initialize(dims.x, dims.y, dims.z, voxel_size);
+    
+    float origin_x, origin_y, origin_z;
+    metadata_grid.getOrigin(origin_x, origin_y, origin_z);
+    reconstructed_grid.setOrigin(origin_x, origin_y, origin_z);
+    
+    // Calculate number of blocks
+    int x_blocks = (dims.x + settings_.block_size - 1) / settings_.block_size;
+    int y_blocks = (dims.y + settings_.block_size - 1) / settings_.block_size;
+    int z_blocks = (dims.z + settings_.block_size - 1) / settings_.block_size;
+    
+    // Reconstruct blocks from indices and insert into grid
+    size_t block_index = 0;
+    for (int bz = 0; bz < z_blocks; ++bz) {
+        for (int by = 0; by < y_blocks; ++by) {
+            for (int bx = 0; bx < x_blocks; ++bx) {
+                if (block_index >= indices.size()) {
+                    std::cerr << "Error: Not enough indices for all blocks" << std::endl;
+                    return false;
+                }
+                
+                uint16_t pattern_index = indices[block_index++];
+                
+                if (pattern_index >= unique_patterns.size()) {
+                    std::cerr << "Error: Pattern index " << pattern_index 
+                              << " out of range (dictionary size: " 
+                              << unique_patterns.size() << ")" << std::endl;
+                    return false;
+                }
+                
+                // Get pattern and reconstruct block
+                const auto& pattern = unique_patterns[pattern_index];
+                VoxelBlock block(settings_.block_size);
+                block.fromBytePattern(pattern);
+                block.position = VoxelCoord(bx, by, bz);
+                
+                // Insert block into grid
+                reconstructed_grid.insertBlock(block, bx, by, bz);
+            }
+        }
+    }
+    
+    // Extract points from reconstructed voxel grid
+    return voxel_processor_->reconstructPointCloud(reconstructed_grid, cloud);
 }
 
 void PointCloudCompressor::initializeTempPaths(const std::string& output_prefix) {

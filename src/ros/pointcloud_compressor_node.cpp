@@ -148,9 +148,17 @@ private:
         auto compression_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         
         if (compression_result.success) {
-            RCLCPP_INFO(this->get_logger(), "Compression completed: %ld ms, ratio %.3f, patterns %zu", 
+            // Determine index encoding efficiency
+            uint16_t max_index = 0;
+            if (!compression_result.block_indices.empty()) {
+                max_index = *std::max_element(compression_result.block_indices.begin(), 
+                                             compression_result.block_indices.end());
+            }
+            bool using_8bit = (max_index < 256);
+            
+            RCLCPP_INFO(this->get_logger(), "Compression completed: %ld ms, ratio %.3f, patterns %zu, %s encoding", 
                         compression_duration.count(), compression_result.compression_ratio, 
-                        compression_result.num_unique_patterns);
+                        compression_result.num_unique_patterns, using_8bit ? "8-bit" : "16-bit");
             
             // Calculate and log occupancy grid map size
             calculateAndLogOccupancyGridSize(compression_result);
@@ -197,11 +205,34 @@ private:
         msg.blocks_y = static_cast<uint32_t>(result.blocks_count.y);
         msg.blocks_z = static_cast<uint32_t>(result.blocks_count.z);
 
-        // Set block indices
-        msg.block_indices.resize(result.block_indices.size());
-        for (size_t i = 0; i < result.block_indices.size(); ++i) {
-            msg.block_indices[i] = static_cast<uint8_t>(std::min(result.block_indices[i], static_cast<uint16_t>(255)));
+        // Determine index bit size based on maximum index value
+        uint16_t max_index = 0;
+        if (!result.block_indices.empty()) {
+            max_index = *std::max_element(result.block_indices.begin(), result.block_indices.end());
         }
+        
+        // Set index encoding type
+        if (max_index < 256) {
+            msg.index_bit_size = 8;
+            // Pack as 8-bit indices
+            msg.block_indices_data.clear();
+            msg.block_indices_data.reserve(result.block_indices.size());
+            for (uint16_t idx : result.block_indices) {
+                msg.block_indices_data.push_back(static_cast<uint8_t>(idx));
+            }
+        } else {
+            msg.index_bit_size = 16;
+            // Pack as 16-bit indices (little-endian)
+            msg.block_indices_data.clear();
+            msg.block_indices_data.reserve(result.block_indices.size() * 2);
+            for (uint16_t idx : result.block_indices) {
+                msg.block_indices_data.push_back(static_cast<uint8_t>(idx & 0xFF));         // Low byte
+                msg.block_indices_data.push_back(static_cast<uint8_t>((idx >> 8) & 0xFF)); // High byte
+            }
+        }
+        
+        RCLCPP_INFO(this->get_logger(), "Using %u-bit index encoding (max index: %u)", 
+                    msg.index_bit_size, max_index);
 
         // Set pattern dictionary
         msg.num_patterns = static_cast<uint32_t>(result.num_unique_patterns);
