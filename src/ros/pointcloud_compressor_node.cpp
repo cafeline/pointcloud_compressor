@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <geometry_msgs/msg/vector3.hpp>
+#include <geometry_msgs/msg/point.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 #include <filesystem>
@@ -269,80 +270,123 @@ private:
     void publishOccupiedVoxelMarkers()
     {
         if (!publish_occupied_voxel_markers_ || !marker_pub_) {
+            RCLCPP_INFO(this->get_logger(), "Skipping occupied voxel markers publication (disabled or no publisher)");
             return;
         }
 
         auto marker_array = createOccupiedVoxelMarkers();
         if (!marker_array.has_value()) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to create occupied voxel markers");
             return;
         }
 
         marker_pub_->publish(marker_array.value());
-        RCLCPP_DEBUG(this->get_logger(), "Published %zu occupied voxel markers", marker_array.value().markers.size());
+        RCLCPP_INFO(this->get_logger(), "Published occupied_voxel_markers: %zu markers", marker_array.value().markers.size());
     }
     
     std::optional<visualization_msgs::msg::MarkerArray> createOccupiedVoxelMarkers()
     {
-        // Load point cloud
-        pointcloud_compressor::PointCloud cloud;
-        if (!pointcloud_compressor::PointCloudIO::loadPointCloud(input_file_, cloud)) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to load point cloud for marker visualization");
-            return std::nullopt;
-        }
-
-        // Create voxel processor
-        pointcloud_compressor::VoxelProcessor processor(
-            settings_.voxel_size,
-            settings_.block_size,
-            settings_.min_points_threshold
-        );
-
-        // Voxelize the point cloud
+        // Try to use cached voxel grid first
+        auto cached_grid = compressor_->getCachedVoxelGrid();
+        
         pointcloud_compressor::VoxelGrid grid;
-        if (!processor.voxelizePointCloud(cloud, grid)) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to voxelize point cloud");
-            return std::nullopt;
+        
+        if (cached_grid.has_value()) {
+            // Use cached grid - no need to reload and reprocess
+            RCLCPP_DEBUG(this->get_logger(), "Using cached voxel grid for marker visualization");
+            grid = cached_grid.value();
+        } else {
+            // Fallback to loading and voxelizing (should not happen in normal flow)
+            RCLCPP_WARN(this->get_logger(), "No cached voxel grid found, reprocessing point cloud");
+            
+            // Load point cloud
+            pointcloud_compressor::PointCloud cloud;
+            if (!pointcloud_compressor::PointCloudIO::loadPointCloud(input_file_, cloud)) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to load point cloud for marker visualization");
+                return std::nullopt;
+            }
+
+            // Create voxel processor
+            pointcloud_compressor::VoxelProcessor processor(
+                settings_.voxel_size,
+                settings_.block_size,
+                settings_.min_points_threshold
+            );
+
+            // Voxelize the point cloud
+            if (!processor.voxelizePointCloud(cloud, grid)) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to voxelize point cloud");
+                return std::nullopt;
+            }
         }
 
-        // Create marker array
+        // Create marker array with CUBE_LIST for efficiency
         visualization_msgs::msg::MarkerArray marker_array;
         auto dimensions = grid.getDimensions();
-        int marker_id = 0;
         
         float origin_x, origin_y, origin_z;
         grid.getOrigin(origin_x, origin_y, origin_z);
 
+        // Create CUBE_LIST markers (split into chunks for better performance)
+        const int MAX_POINTS_PER_MARKER = 10000;
+        std::vector<geometry_msgs::msg::Point> current_points;
+        current_points.reserve(MAX_POINTS_PER_MARKER);
+        int marker_id = 0;
+        
         for (int z = 0; z < dimensions.z; ++z) {
             for (int y = 0; y < dimensions.y; ++y) {
                 for (int x = 0; x < dimensions.x; ++x) {
                     if (grid.getVoxel(x, y, z)) {
-                        marker_array.markers.push_back(createVoxelMarker(
-                            marker_id++, x, y, z, origin_x, origin_y, origin_z
-                        ));
+                        geometry_msgs::msg::Point point;
+                        point.x = origin_x + (x + 0.5) * settings_.voxel_size;
+                        point.y = origin_y + (y + 0.5) * settings_.voxel_size;
+                        point.z = origin_z + (z + 0.5) * settings_.voxel_size;
+                        current_points.push_back(point);
+                        
+                        // Create new CUBE_LIST marker when reaching limit
+                        if (current_points.size() >= MAX_POINTS_PER_MARKER) {
+                            marker_array.markers.push_back(createCubeListMarker(
+                                marker_id++, current_points
+                            ));
+                            current_points.clear();
+                            current_points.reserve(MAX_POINTS_PER_MARKER);
+                        }
                     }
                 }
             }
         }
         
+        // Add remaining points
+        if (!current_points.empty()) {
+            marker_array.markers.push_back(createCubeListMarker(
+                marker_id++, current_points
+            ));
+        }
+        
+        RCLCPP_INFO(this->get_logger(), "Created %zu CUBE_LIST markers for occupied voxels", 
+                    marker_array.markers.size());
+        
         return marker_array;
     }
     
-    visualization_msgs::msg::Marker createVoxelMarker(
-        int id, int x, int y, int z, 
-        float origin_x, float origin_y, float origin_z)
+    visualization_msgs::msg::Marker createCubeListMarker(
+        int id, const std::vector<geometry_msgs::msg::Point>& points)
     {
         visualization_msgs::msg::Marker marker;
         
         marker.header.frame_id = "map";
         marker.header.stamp = this->get_clock()->now();
         marker.id = id;
-        marker.type = visualization_msgs::msg::Marker::CUBE;
+        marker.type = visualization_msgs::msg::Marker::CUBE_LIST;
         marker.action = visualization_msgs::msg::Marker::ADD;
 
-        // Position at center of voxel
-        marker.pose.position.x = origin_x + (x + 0.5) * settings_.voxel_size;
-        marker.pose.position.y = origin_y + (y + 0.5) * settings_.voxel_size;
-        marker.pose.position.z = origin_z + (z + 0.5) * settings_.voxel_size;
+        // For CUBE_LIST, pose is identity (points contain absolute positions)
+        marker.pose.position.x = 0.0;
+        marker.pose.position.y = 0.0;
+        marker.pose.position.z = 0.0;
+        marker.pose.orientation.x = 0.0;
+        marker.pose.orientation.y = 0.0;
+        marker.pose.orientation.z = 0.0;
         marker.pose.orientation.w = 1.0;
 
         // Scale (slightly smaller than voxel size for visibility)
@@ -355,6 +399,9 @@ private:
         marker.color.g = 1.0;
         marker.color.b = 0.0;
         marker.color.a = 0.5;
+        
+        // Add all points
+        marker.points = points;
         
         return marker;
     }

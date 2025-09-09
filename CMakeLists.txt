@@ -170,6 +170,10 @@ if(BUILD_TESTING)
   )
   ament_target_dependencies(test_ros_message_utils ${dependencies})
   add_dependencies(test_ros_message_utils ${PROJECT_NAME}__rosidl_typesupport_cpp)
+  
+  # Voxel Grid Reuse Test
+  ament_add_gtest(test_voxel_grid_reuse test/test_voxel_grid_reuse.cpp)
+  target_link_libraries(test_voxel_grid_reuse ${PROJECT_NAME}_core)
 endif()
 
 # Export dependencies

@@ -3,6 +3,7 @@
 
 #include <string>
 #include <memory>
+#include <optional>
 #include "pointcloud_compressor/io/PointCloudIO.hpp"
 #include "pointcloud_compressor/core/VoxelProcessor.hpp"
 #include "pointcloud_compressor/core/PatternDictionaryBuilder.hpp"
@@ -75,11 +76,18 @@ public:
     bool validateInputFile(const std::string& filename);
     size_t estimateMemoryUsage(const std::string& input_file);
     
+    // Voxel grid caching
+    std::optional<VoxelGrid> getCachedVoxelGrid() const;
+    void clearCachedVoxelGrid();
+    
 private:
     CompressionSettings settings_;
     std::unique_ptr<VoxelProcessor> voxel_processor_;
     std::unique_ptr<PatternDictionaryBuilder> dictionary_builder_;
     std::unique_ptr<PatternEncoder> pattern_encoder_;
+    
+    // Cached voxel grid for reuse
+    mutable std::optional<VoxelGrid> cached_voxel_grid_;
     
     // Internal compression steps
     bool loadPointCloud(const std::string& filename, PointCloud& cloud);

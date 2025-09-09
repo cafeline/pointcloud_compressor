@@ -57,6 +57,10 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
         
         result.num_blocks = blocks.size();
         result.voxel_grid = grid;
+        
+        // Cache the voxel grid for reuse
+        cached_voxel_grid_ = grid;
+        
         std::cout << "[PointCloudCompressor] Voxelize and divide: " << voxelize_time << " ms (" 
                   << blocks.size() << " blocks)" << std::endl;
         
@@ -241,6 +245,14 @@ size_t PointCloudCompressor::estimateMemoryUsage(const std::string& input_file) 
     size_t estimated_blocks = point_cloud_size / 10;     // Rough compression estimate
     
     return point_cloud_size + estimated_voxel_grid + estimated_blocks;
+}
+
+std::optional<VoxelGrid> PointCloudCompressor::getCachedVoxelGrid() const {
+    return cached_voxel_grid_;
+}
+
+void PointCloudCompressor::clearCachedVoxelGrid() {
+    cached_voxel_grid_.reset();
 }
 
 // Private methods
