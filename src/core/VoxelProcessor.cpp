@@ -53,7 +53,7 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     int grid_z = static_cast<int>(std::ceil((max_pt.z - min_pt.z) / voxel_size_)) + 1;
     
     std::cout << "[VoxelProcessor] Grid dimensions: " << grid_x << "x" << grid_y << "x" << grid_z 
-              << " (" << (grid_x * grid_y * grid_z) << " voxels)" << std::endl;
+              << " (" << (static_cast<uint64_t>(grid_x) * grid_y * grid_z) << " voxels)" << std::endl;
     std::cout << "[VoxelProcessor] Bounding box calculation: " << bbox_time << " ms" << std::endl;
     
     // Initialize grid
@@ -64,114 +64,64 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     auto grid_init_time = std::chrono::duration_cast<std::chrono::microseconds>(grid_init_end - grid_init_start).count() / 1000.0;
     std::cout << "[VoxelProcessor] Grid initialization: " << grid_init_time << " ms" << std::endl;
     
-    // Count points per voxel using parallel processing
-    auto voxel_count_start = std::chrono::high_resolution_clock::now();
+    // Use bit vector for all cases (memory efficient)
+    uint64_t total_voxels = static_cast<uint64_t>(grid_x) * grid_y * grid_z;
     
-    // Choose between atomic array (for reasonable grid sizes) or hash map
-    size_t total_voxels = static_cast<size_t>(grid_x) * grid_y * grid_z;
-    const size_t MAX_DIRECT_ARRAY_SIZE = 100000000; // 100M voxels = ~400MB for atomic<int>
+    std::cout << "[VoxelProcessor] Using bit vector optimization (" << total_voxels << " voxels)" << std::endl;
     
     int occupied_count = 0;
     
-    if (total_voxels <= MAX_DIRECT_ARRAY_SIZE) {
-        // Use direct array indexing (much faster than hash map)
-        std::cout << "[VoxelProcessor] Using array optimization (" << total_voxels << " voxels)" << std::endl;
+    // Phase 1: Count points per voxel using sparse map
+    auto voxel_count_start = std::chrono::high_resolution_clock::now();
+    std::unordered_map<uint64_t, uint32_t> voxel_count_map;
+    voxel_count_map.reserve(cloud.points.size() / 10); // Estimate ~10 points per voxel
         
-        // Allocate counter array
-        std::vector<int> voxel_counts(total_voxels, 0);
+    // Pre-compute inverse for faster division
+    const float inv_voxel_size = 1.0f / voxel_size_;
+    
+    // Count points per voxel
+    for (const auto& point : cloud.points) {
+        // Fast voxel index calculation with multiplication instead of division
+        int x = static_cast<int>((point.x - min_pt.x) * inv_voxel_size);
+        int y = static_cast<int>((point.y - min_pt.y) * inv_voxel_size);
+        int z = static_cast<int>((point.z - min_pt.z) * inv_voxel_size);
         
-        // Pre-compute inverse for faster division
-        const float inv_voxel_size = 1.0f / voxel_size_;
-        
-        std::cout << "[VoxelProcessor] Using single-threaded processing (optimized)" << std::endl;
-        
-        for (const auto& point : cloud.points) {
-            // Fast voxel index calculation with multiplication instead of division
-            int x = static_cast<int>((point.x - min_pt.x) * inv_voxel_size);
-            int y = static_cast<int>((point.y - min_pt.y) * inv_voxel_size);
-            int z = static_cast<int>((point.z - min_pt.z) * inv_voxel_size);
-            
-            // Check bounds
-            if (x >= 0 && x < grid_x && y >= 0 && y < grid_y && z >= 0 && z < grid_z) {
-                size_t idx = static_cast<size_t>(z) * grid_x * grid_y + 
-                            static_cast<size_t>(y) * grid_x + 
-                            static_cast<size_t>(x);
-                
-                voxel_counts[idx]++;
-            }
+        // Check bounds
+        if (x >= 0 && x < grid_x && y >= 0 && y < grid_y && z >= 0 && z < grid_z) {
+            uint64_t idx = static_cast<uint64_t>(z) * grid_x * grid_y + 
+                          static_cast<uint64_t>(y) * grid_x + 
+                          static_cast<uint64_t>(x);
+            voxel_count_map[idx]++;
         }
-        
-        auto voxel_count_end = std::chrono::high_resolution_clock::now();
-        auto voxel_count_time = std::chrono::duration_cast<std::chrono::microseconds>(voxel_count_end - voxel_count_start).count() / 1000.0;
-        std::cout << "[VoxelProcessor] Voxel counting: " << voxel_count_time << " ms" << std::endl;
-        
-        // Set voxel occupancy based on point count threshold
-        auto set_voxel_start = std::chrono::high_resolution_clock::now();
-        
-        for (int z = 0; z < grid_z; ++z) {
-            for (int y = 0; y < grid_y; ++y) {
-                for (int x = 0; x < grid_x; ++x) {
-                    size_t idx = static_cast<size_t>(z) * grid_x * grid_y + 
-                                static_cast<size_t>(y) * grid_x + 
-                                static_cast<size_t>(x);
-                    
-                    if (voxel_counts[idx] >= min_points_threshold_) {
-                        grid.setVoxel(x, y, z, true);
-                        occupied_count++;
-                    }
-                }
-            }
-        }
-        
-        auto set_voxel_end = std::chrono::high_resolution_clock::now();
-        auto set_voxel_time = std::chrono::duration_cast<std::chrono::microseconds>(set_voxel_end - set_voxel_start).count() / 1000.0;
-        std::cout << "[VoxelProcessor] Setting voxel occupancy: " << set_voxel_time << " ms (" 
-                  << occupied_count << " voxels set)" << std::endl;
-        
-    } else {
-        // Fallback to hash map for very large grids
-        std::cout << "[VoxelProcessor] Grid too large (" << total_voxels << " voxels), using hash map" << std::endl;
-        std::cout << "[VoxelProcessor] Using single-threaded processing" << std::endl;
-        
-        std::unordered_map<std::tuple<int, int, int>, int> voxel_point_count;
-        voxel_point_count.reserve(cloud.points.size() / 10);  // Reserve some capacity
-        
-        for (const auto& point : cloud.points) {
-            int x, y, z;
-            pointToVoxelIndexFast(point, min_pt, x, y, z);
-            
-            // Check bounds
-            if (x >= 0 && x < grid_x && y >= 0 && y < grid_y && z >= 0 && z < grid_z) {
-                auto voxel_key = std::make_tuple(x, y, z);
-                voxel_point_count[voxel_key]++;
-            }
-        }
-        
-        auto voxel_count_end = std::chrono::high_resolution_clock::now();
-        auto voxel_count_time = std::chrono::duration_cast<std::chrono::microseconds>(voxel_count_end - voxel_count_start).count() / 1000.0;
-        std::cout << "[VoxelProcessor] Voxel counting: " << voxel_count_time << " ms (" 
-                  << voxel_point_count.size() << " occupied voxels)" << std::endl;
-        
-        // Set voxel occupancy based on point count threshold
-        auto set_voxel_start = std::chrono::high_resolution_clock::now();
-        
-        for (const auto& entry : voxel_point_count) {
-            int x = std::get<0>(entry.first);
-            int y = std::get<1>(entry.first);
-            int z = std::get<2>(entry.first);
-            int point_count = entry.second;
-            
-            if (point_count >= min_points_threshold_) {
-                grid.setVoxel(x, y, z, true);
-                occupied_count++;
-            }
-        }
-        
-        auto set_voxel_end = std::chrono::high_resolution_clock::now();
-        auto set_voxel_time = std::chrono::duration_cast<std::chrono::microseconds>(set_voxel_end - set_voxel_start).count() / 1000.0;
-        std::cout << "[VoxelProcessor] Setting voxel occupancy: " << set_voxel_time << " ms (" 
-                  << occupied_count << " voxels set)" << std::endl;
     }
+    
+    auto voxel_count_end = std::chrono::high_resolution_clock::now();
+    auto voxel_count_time = std::chrono::duration_cast<std::chrono::microseconds>(voxel_count_end - voxel_count_start).count() / 1000.0;
+    std::cout << "[VoxelProcessor] Voxel counting: " << voxel_count_time << " ms (" 
+              << voxel_count_map.size() << " occupied voxels)" << std::endl;
+    
+    // Phase 2: Transfer to VoxelGrid (optimized for sparse grids)
+    auto transfer_start = std::chrono::high_resolution_clock::now();
+    
+    // For sparse voxel maps, directly set from the count map (already know which are occupied)
+    for (const auto& [idx, count] : voxel_count_map) {
+        if (count >= min_points_threshold_) {
+            // Convert linear index back to 3D coordinates
+            uint64_t temp = idx;
+            int x = temp % grid_x;
+            temp /= grid_x;
+            int y = temp % grid_y;
+            int z = temp / grid_y;
+            
+            grid.setVoxel(x, y, z, true);
+            occupied_count++;
+        }
+    }
+    
+    auto transfer_end = std::chrono::high_resolution_clock::now();
+    auto transfer_time = std::chrono::duration_cast<std::chrono::microseconds>(transfer_end - transfer_start).count() / 1000.0;
+    std::cout << "[VoxelProcessor] Grid transfer: " << transfer_time << " ms (" 
+              << occupied_count << " voxels set)" << std::endl;
     
     auto total_end = std::chrono::high_resolution_clock::now();
     auto total_time = std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_start).count() / 1000.0;

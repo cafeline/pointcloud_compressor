@@ -69,10 +69,10 @@ int VoxelBlock::indexFromCoord(int x, int y, int z) const {
 
 // VoxelGrid implementation
 VoxelGrid::VoxelGrid() : dim_x_(0), dim_y_(0), dim_z_(0), voxel_size_(0.01f),
-                         origin_x_(0), origin_y_(0), origin_z_(0) {}
+                         origin_x_(0), origin_y_(0), origin_z_(0), use_sparse_(false) {}
 
 VoxelGrid::VoxelGrid(int dim_x, int dim_y, int dim_z, float voxel_size)
-    : voxel_size_(voxel_size), origin_x_(0), origin_y_(0), origin_z_(0) {
+    : voxel_size_(voxel_size), origin_x_(0), origin_y_(0), origin_z_(0), use_sparse_(false) {
     initialize(dim_x, dim_y, dim_z, voxel_size);
 }
 
@@ -84,19 +84,44 @@ void VoxelGrid::initialize(int dim_x, int dim_y, int dim_z, float voxel_size) {
     dim_z_ = dim_z;
     voxel_size_ = voxel_size;
     
-    int total_voxels = dim_x * dim_y * dim_z;
-    voxels_.assign(total_voxels, 0);
+    uint64_t total_voxels = static_cast<uint64_t>(dim_x) * dim_y * dim_z;
+    
+    // Use sparse representation for large grids
+    if (total_voxels > SPARSE_THRESHOLD) {
+        use_sparse_ = true;
+        voxels_.clear();
+        sparse_voxels_.clear();
+        sparse_voxels_.reserve(total_voxels / 100); // Assume ~1% occupancy
+    } else {
+        use_sparse_ = false;
+        sparse_voxels_.clear();
+        voxels_.assign(static_cast<size_t>(total_voxels), 0);
+    }
 }
 
 void VoxelGrid::setVoxel(int x, int y, int z, bool occupied) {
     if (isValidCoord(x, y, z)) {
-        voxels_[indexFromCoord(x, y, z)] = occupied ? 1 : 0;
+        uint64_t idx = indexFromCoord(x, y, z);
+        if (use_sparse_) {
+            if (occupied) {
+                sparse_voxels_[idx] = true;
+            } else {
+                sparse_voxels_.erase(idx);
+            }
+        } else {
+            voxels_[static_cast<size_t>(idx)] = occupied ? 1 : 0;
+        }
     }
 }
 
 bool VoxelGrid::getVoxel(int x, int y, int z) const {
     if (isValidCoord(x, y, z)) {
-        return voxels_[indexFromCoord(x, y, z)] != 0;
+        uint64_t idx = indexFromCoord(x, y, z);
+        if (use_sparse_) {
+            return sparse_voxels_.find(idx) != sparse_voxels_.end();
+        } else {
+            return voxels_[static_cast<size_t>(idx)] != 0;
+        }
     }
     return false;
 }
@@ -110,7 +135,11 @@ void VoxelGrid::setDimensions(int x, int y, int z) {
 }
 
 int VoxelGrid::getOccupiedVoxelCount() const {
-    return std::count_if(voxels_.begin(), voxels_.end(), [](uint8_t v) { return v != 0; });
+    if (use_sparse_) {
+        return static_cast<int>(sparse_voxels_.size());
+    } else {
+        return std::count_if(voxels_.begin(), voxels_.end(), [](uint8_t v) { return v != 0; });
+    }
 }
 
 int VoxelGrid::getTotalVoxelCount() const {
@@ -124,7 +153,11 @@ float VoxelGrid::getOccupancyRatio() const {
 }
 
 void VoxelGrid::clear() {
-    std::fill(voxels_.begin(), voxels_.end(), 0);
+    if (use_sparse_) {
+        sparse_voxels_.clear();
+    } else {
+        std::fill(voxels_.begin(), voxels_.end(), 0);
+    }
 }
 
 bool VoxelGrid::isValidCoord(int x, int y, int z) const {
@@ -188,8 +221,10 @@ void VoxelGrid::insertBlock(const VoxelBlock& block, int block_x, int block_y, i
     }
 }
 
-int VoxelGrid::indexFromCoord(int x, int y, int z) const {
-    return z * dim_x_ * dim_y_ + y * dim_x_ + x;
+uint64_t VoxelGrid::indexFromCoord(int x, int y, int z) const {
+    return static_cast<uint64_t>(z) * dim_x_ * dim_y_ + 
+           static_cast<uint64_t>(y) * dim_x_ + 
+           static_cast<uint64_t>(x);
 }
 
 } // namespace pointcloud_compressor

@@ -158,6 +158,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_decompression test/test_decompression.cpp)
   target_link_libraries(test_decompression ${PROJECT_NAME}_core)
   
+  # Bit Voxel Grid Test
+  ament_add_gtest(test_bit_voxel_grid test/test_bit_voxel_grid.cpp)
+  target_link_libraries(test_bit_voxel_grid ${PROJECT_NAME}_core)
+  
   # ROS Message Utils Test
   ament_add_gtest(test_ros_message_utils test/test_ros_message_utils.cpp)
   target_link_libraries(test_ros_message_utils 

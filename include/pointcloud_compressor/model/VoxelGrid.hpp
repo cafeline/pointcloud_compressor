@@ -5,6 +5,7 @@
 #include <memory>
 #include <bitset>
 #include <cstdint>
+#include <unordered_map>
 
 namespace pointcloud_compressor {
 
@@ -92,9 +93,14 @@ private:
     int dim_x_, dim_y_, dim_z_;  // Grid dimensions
     float voxel_size_;            // Size of each voxel
     float origin_x_, origin_y_, origin_z_;  // Grid origin
-    std::vector<uint8_t> voxels_;   // Flattened 3D array (using uint8_t to avoid std::vector<bool> issues)
     
-    int indexFromCoord(int x, int y, int z) const;
+    // Use sparse representation for large grids
+    static constexpr uint64_t SPARSE_THRESHOLD = 100000000; // 100M voxels
+    bool use_sparse_;
+    std::vector<uint8_t> voxels_;   // Dense array for small grids
+    std::unordered_map<uint64_t, bool> sparse_voxels_; // Sparse map for large grids
+    
+    uint64_t indexFromCoord(int x, int y, int z) const;
 };
 
 } // namespace pointcloud_compressor
