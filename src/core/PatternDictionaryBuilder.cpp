@@ -1,6 +1,7 @@
 #include "pointcloud_compressor/core/PatternDictionaryBuilder.hpp"
 #include <fstream>
 #include <iostream>
+#include <algorithm>
 
 namespace pointcloud_compressor {
 
@@ -12,12 +13,13 @@ bool PatternDictionaryBuilder::buildDictionary(const std::vector<std::vector<uin
     unique_patterns_.clear();
     pattern_indices_.clear();
     pattern_to_index_.clear();
+    max_index_ = 0;
     
     if (patterns.empty()) {
         return false;
     }
     
-    uint16_t next_index = 0;
+    uint64_t next_index = 0;
     
     for (const auto& pattern : patterns) {
         auto it = pattern_to_index_.find(pattern);
@@ -26,6 +28,7 @@ bool PatternDictionaryBuilder::buildDictionary(const std::vector<std::vector<uin
             pattern_to_index_[pattern] = next_index;
             unique_patterns_.push_back(pattern);
             pattern_indices_.push_back(next_index);
+            max_index_ = next_index;
             next_index++;
         } else {
             // Existing pattern
@@ -40,11 +43,23 @@ const std::vector<std::vector<uint8_t>>& PatternDictionaryBuilder::getUniquePatt
     return unique_patterns_;
 }
 
-const std::vector<uint16_t>& PatternDictionaryBuilder::getPatternIndices() const {
+const std::vector<uint64_t>& PatternDictionaryBuilder::getPatternIndices() const {
     return pattern_indices_;
 }
 
-bool PatternDictionaryBuilder::saveDictionary(const std::string& filename) const {
+int PatternDictionaryBuilder::getRequiredIndexBitSize() const {
+    if (max_index_ <= std::numeric_limits<uint8_t>::max()) {
+        return 8;
+    } else if (max_index_ <= std::numeric_limits<uint16_t>::max()) {
+        return 16;
+    } else if (max_index_ <= std::numeric_limits<uint32_t>::max()) {
+        return 32;
+    } else {
+        return 64;
+    }
+}
+
+bool PatternDictionaryBuilder::saveDictionary(const std::string& filename, int index_bit_size) const {
     std::ofstream file(filename, std::ios::binary);
     if (!file.is_open()) {
         return false;
@@ -94,7 +109,8 @@ bool PatternDictionaryBuilder::loadDictionary(const std::string& filename) {
         }
         
         unique_patterns_.push_back(pattern);
-        pattern_to_index_[pattern] = static_cast<uint16_t>(i);
+        pattern_to_index_[pattern] = static_cast<uint64_t>(i);
+        max_index_ = std::max(max_index_, static_cast<uint64_t>(i));
     }
     
     return true;

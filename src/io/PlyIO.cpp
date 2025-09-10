@@ -224,13 +224,15 @@ bool PlyIO::readAsciiData(std::ifstream& file, PointCloud& cloud, const PlyHeade
     // Disable C++ stream synchronization with C streams for better performance
     std::ios_base::sync_with_stdio(false);
     
+    // Save current position (after header)
+    std::streampos current_pos = file.tellg();
+    
     // Read entire file into buffer for faster parsing
     file.seekg(0, std::ios::end);
     size_t file_size = file.tellg();
-    file.seekg(0, std::ios::beg);
     
-    // Skip to current position after header
-    std::streampos current_pos = file.tellg();
+    // Go back to position after header
+    file.seekg(current_pos);
     
     std::vector<char> buffer(file_size - current_pos);
     file.read(buffer.data(), buffer.size());

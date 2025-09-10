@@ -188,6 +188,10 @@ if(BUILD_TESTING)
   # Block Size Optimization Test
   ament_add_gtest(test_block_size_optimization test/test_block_size_optimization.cpp)
   target_link_libraries(test_block_size_optimization ${PROJECT_NAME}_core)
+  
+  # Voxel Round Trip Test
+  ament_add_gtest(test_voxel_round_trip test/test_voxel_round_trip.cpp)
+  target_link_libraries(test_voxel_round_trip ${PROJECT_NAME}_core)
 endif()
 
 # Export dependencies

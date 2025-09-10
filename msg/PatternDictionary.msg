@@ -19,12 +19,14 @@ uint32 blocks_x
 uint32 blocks_y
 uint32 blocks_z
 
-# Index encoding type (8 or 16 for bit size)
+# Index encoding type (8, 16, 32, or 64 for bit size)
 uint8 index_bit_size
 
 # Block indices - using uint8[] for flexible storage
 # If index_bit_size == 8, each element is one index
 # If index_bit_size == 16, two consecutive elements form one index (little-endian)
+# If index_bit_size == 32, four consecutive elements form one index (little-endian)
+# If index_bit_size == 64, eight consecutive elements form one index (little-endian)
 uint8[] block_indices_data
 
 # Number of unique patterns in the dictionary

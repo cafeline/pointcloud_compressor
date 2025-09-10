@@ -210,31 +210,51 @@ private:
         msg.blocks_y = static_cast<uint32_t>(result.blocks_count.y);
         msg.blocks_z = static_cast<uint32_t>(result.blocks_count.z);
 
-        // Use pre-calculated max_index from compression result
-        uint16_t max_index = result.max_index;
+        // Use pre-calculated index bit size from compression result
+        msg.index_bit_size = result.index_bit_size;
         
-        // Set index encoding type
-        if (max_index < 256) {
-            msg.index_bit_size = 8;
+        // Pack indices based on bit size
+        msg.block_indices_data.clear();
+        
+        if (msg.index_bit_size == 8) {
             // Pack as 8-bit indices
-            msg.block_indices_data.clear();
             msg.block_indices_data.reserve(result.block_indices.size());
-            for (uint16_t idx : result.block_indices) {
+            for (uint64_t idx : result.block_indices) {
                 msg.block_indices_data.push_back(static_cast<uint8_t>(idx));
             }
-        } else {
-            msg.index_bit_size = 16;
+        } else if (msg.index_bit_size == 16) {
             // Pack as 16-bit indices (little-endian)
-            msg.block_indices_data.clear();
             msg.block_indices_data.reserve(result.block_indices.size() * 2);
-            for (uint16_t idx : result.block_indices) {
+            for (uint64_t idx : result.block_indices) {
                 msg.block_indices_data.push_back(static_cast<uint8_t>(idx & 0xFF));         // Low byte
                 msg.block_indices_data.push_back(static_cast<uint8_t>((idx >> 8) & 0xFF)); // High byte
             }
+        } else if (msg.index_bit_size == 32) {
+            // Pack as 32-bit indices (little-endian)
+            msg.block_indices_data.reserve(result.block_indices.size() * 4);
+            for (uint64_t idx : result.block_indices) {
+                msg.block_indices_data.push_back(static_cast<uint8_t>(idx & 0xFF));         // Byte 0
+                msg.block_indices_data.push_back(static_cast<uint8_t>((idx >> 8) & 0xFF)); // Byte 1
+                msg.block_indices_data.push_back(static_cast<uint8_t>((idx >> 16) & 0xFF)); // Byte 2
+                msg.block_indices_data.push_back(static_cast<uint8_t>((idx >> 24) & 0xFF)); // Byte 3
+            }
+        } else if (msg.index_bit_size == 64) {
+            // Pack as 64-bit indices (little-endian)
+            msg.block_indices_data.reserve(result.block_indices.size() * 8);
+            for (uint64_t idx : result.block_indices) {
+                msg.block_indices_data.push_back(static_cast<uint8_t>(idx & 0xFF));         // Byte 0
+                msg.block_indices_data.push_back(static_cast<uint8_t>((idx >> 8) & 0xFF)); // Byte 1
+                msg.block_indices_data.push_back(static_cast<uint8_t>((idx >> 16) & 0xFF)); // Byte 2
+                msg.block_indices_data.push_back(static_cast<uint8_t>((idx >> 24) & 0xFF)); // Byte 3
+                msg.block_indices_data.push_back(static_cast<uint8_t>((idx >> 32) & 0xFF)); // Byte 4
+                msg.block_indices_data.push_back(static_cast<uint8_t>((idx >> 40) & 0xFF)); // Byte 5
+                msg.block_indices_data.push_back(static_cast<uint8_t>((idx >> 48) & 0xFF)); // Byte 6
+                msg.block_indices_data.push_back(static_cast<uint8_t>((idx >> 56) & 0xFF)); // Byte 7
+            }
         }
         
-        RCLCPP_INFO(this->get_logger(), "Using %u-bit index encoding (max index: %u)", 
-                    msg.index_bit_size, max_index);
+        RCLCPP_INFO(this->get_logger(), "Using %u-bit index encoding (max index: %lu)", 
+                    msg.index_bit_size, result.max_index);
 
         // Set pattern dictionary
         msg.num_patterns = static_cast<uint32_t>(result.num_unique_patterns);

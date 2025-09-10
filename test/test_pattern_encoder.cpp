@@ -72,7 +72,7 @@ TEST_F(PatternEncoderTest, DecodePatterns) {
     ASSERT_TRUE(encode_result);
     
     // Then decode
-    std::vector<uint16_t> decoded_indices;
+    std::vector<uint64_t> decoded_indices;
     bool decode_result = encoder.decodePatterns(filename, decoded_indices);
     
     EXPECT_TRUE(decode_result);
@@ -95,7 +95,7 @@ TEST_F(PatternEncoderTest, RoundTrip16bit) {
     ASSERT_TRUE(encode_result);
     
     // Decode
-    std::vector<uint16_t> decoded_indices;
+    std::vector<uint64_t> decoded_indices;
     bool decode_result = encoder.decodePatterns(filename, decoded_indices);
     
     EXPECT_TRUE(decode_result);
@@ -150,7 +150,7 @@ TEST_F(PatternEncoderTest, DecodeEmptyIndices) {
     ASSERT_TRUE(encode_result);
     
     // Decode
-    std::vector<uint16_t> decoded_indices;
+    std::vector<uint64_t> decoded_indices;
     bool decode_result = encoder.decodePatterns(filename, decoded_indices);
     
     EXPECT_TRUE(decode_result);
@@ -171,7 +171,7 @@ TEST_F(PatternEncoderTest, EncodeToInvalidPath) {
 // Test decoding from non-existent file
 TEST_F(PatternEncoderTest, DecodeNonExistentFile) {
     PatternEncoder encoder;
-    std::vector<uint16_t> indices;
+    std::vector<uint64_t> indices;
     
     bool result = encoder.decodePatterns("non_existent_file.bin", indices);
     
@@ -203,7 +203,7 @@ TEST_F(PatternEncoderTest, BoundaryValues8bit) {
     EXPECT_TRUE(encode_result);
     
     // Verify round-trip
-    std::vector<uint16_t> decoded_indices;
+    std::vector<uint64_t> decoded_indices;
     bool decode_result = encoder.decodePatterns(filename, decoded_indices);
     EXPECT_TRUE(decode_result);
     EXPECT_EQ(decoded_indices, boundary_indices);
