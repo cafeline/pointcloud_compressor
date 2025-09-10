@@ -6,24 +6,10 @@
 #include <fstream>
 #include <iostream>
 #include <unordered_map>
-#include <tuple>
 #include <chrono>
 #include <mutex>
 #include <vector>
 #include <memory>
-
-// Custom hash function for tuple<int, int, int>
-namespace std {
-    template<>
-    struct hash<std::tuple<int, int, int>> {
-        size_t operator()(const std::tuple<int, int, int>& t) const {
-            size_t h1 = std::hash<int>{}(std::get<0>(t));
-            size_t h2 = std::hash<int>{}(std::get<1>(t));
-            size_t h3 = std::hash<int>{}(std::get<2>(t));
-            return h1 ^ (h2 << 1) ^ (h3 << 2);
-        }
-    };
-}
 
 namespace pointcloud_compressor {
 
@@ -52,8 +38,11 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     int grid_y = static_cast<int>(std::ceil((max_pt.y - min_pt.y) / voxel_size_)) + 1;
     int grid_z = static_cast<int>(std::ceil((max_pt.z - min_pt.z) / voxel_size_)) + 1;
     
+    // Calculate total voxels once
+    uint64_t total_voxels = static_cast<uint64_t>(grid_x) * grid_y * grid_z;
+    
     std::cout << "[VoxelProcessor] Grid dimensions: " << grid_x << "x" << grid_y << "x" << grid_z 
-              << " (" << (static_cast<uint64_t>(grid_x) * grid_y * grid_z) << " voxels)" << std::endl;
+              << " (" << total_voxels << " voxels)" << std::endl;
     std::cout << "[VoxelProcessor] Bounding box calculation: " << bbox_time << " ms" << std::endl;
     
     // Initialize grid
@@ -63,11 +52,6 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     auto grid_init_end = std::chrono::high_resolution_clock::now();
     auto grid_init_time = std::chrono::duration_cast<std::chrono::microseconds>(grid_init_end - grid_init_start).count() / 1000.0;
     std::cout << "[VoxelProcessor] Grid initialization: " << grid_init_time << " ms" << std::endl;
-    
-    // Use bit vector for all cases (memory efficient)
-    uint64_t total_voxels = static_cast<uint64_t>(grid_x) * grid_y * grid_z;
-    
-    std::cout << "[VoxelProcessor] Using bit vector optimization (" << total_voxels << " voxels)" << std::endl;
     
     int occupied_count = 0;
     

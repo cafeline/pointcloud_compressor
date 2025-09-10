@@ -134,12 +134,6 @@ private:
     
     pointcloud_compressor::CompressionResult performCompression()
     {
-        // Load point cloud and calculate statistics
-        pointcloud_compressor::PointCloud cloud;
-        if (pointcloud_compressor::PointCloudIO::loadPointCloud(input_file_, cloud)) {
-            calculateAndLogPointCloudStatistics(cloud);
-        }
-        
         auto start_time = std::chrono::high_resolution_clock::now();
         std::string temp_prefix = "/tmp/compressed_" + std::to_string(this->now().nanoseconds());
         
@@ -149,13 +143,13 @@ private:
         auto compression_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
         
         if (compression_result.success) {
-            // Determine index encoding efficiency
-            uint16_t max_index = 0;
+            // Store max index for reuse
+            compression_result.max_index = 0;
             if (!compression_result.block_indices.empty()) {
-                max_index = *std::max_element(compression_result.block_indices.begin(), 
-                                             compression_result.block_indices.end());
+                compression_result.max_index = *std::max_element(compression_result.block_indices.begin(), 
+                                                                compression_result.block_indices.end());
             }
-            bool using_8bit = (max_index < 256);
+            bool using_8bit = (compression_result.max_index < 256);
             
             RCLCPP_INFO(this->get_logger(), "Compression completed: %ld ms, ratio %.3f, patterns %zu, %s encoding", 
                         compression_duration.count(), compression_result.compression_ratio, 
@@ -216,11 +210,8 @@ private:
         msg.blocks_y = static_cast<uint32_t>(result.blocks_count.y);
         msg.blocks_z = static_cast<uint32_t>(result.blocks_count.z);
 
-        // Determine index bit size based on maximum index value
-        uint16_t max_index = 0;
-        if (!result.block_indices.empty()) {
-            max_index = *std::max_element(result.block_indices.begin(), result.block_indices.end());
-        }
+        // Use pre-calculated max_index from compression result
+        uint16_t max_index = result.max_index;
         
         // Set index encoding type
         if (max_index < 256) {
@@ -296,28 +287,9 @@ private:
             RCLCPP_DEBUG(this->get_logger(), "Using cached voxel grid for marker visualization");
             grid = cached_grid.value();
         } else {
-            // Fallback to loading and voxelizing (should not happen in normal flow)
-            RCLCPP_WARN(this->get_logger(), "No cached voxel grid found, reprocessing point cloud");
-            
-            // Load point cloud
-            pointcloud_compressor::PointCloud cloud;
-            if (!pointcloud_compressor::PointCloudIO::loadPointCloud(input_file_, cloud)) {
-                RCLCPP_ERROR(this->get_logger(), "Failed to load point cloud for marker visualization");
-                return std::nullopt;
-            }
-
-            // Create voxel processor
-            pointcloud_compressor::VoxelProcessor processor(
-                settings_.voxel_size,
-                settings_.block_size,
-                settings_.min_points_threshold
-            );
-
-            // Voxelize the point cloud
-            if (!processor.voxelizePointCloud(cloud, grid)) {
-                RCLCPP_ERROR(this->get_logger(), "Failed to voxelize point cloud");
-                return std::nullopt;
-            }
+            // No cached grid available - this should not happen in normal flow
+            RCLCPP_ERROR(this->get_logger(), "No cached voxel grid found for marker visualization");
+            return std::nullopt;
         }
 
         // Create marker array with CUBE_LIST for efficiency
@@ -406,46 +378,7 @@ private:
         return marker;
     }
     
-    void calculateAndLogPointCloudStatistics(const pointcloud_compressor::PointCloud& cloud)
-    {
-        if (cloud.empty()) {
-            RCLCPP_WARN(this->get_logger(), "Point cloud is empty, cannot calculate statistics");
-            return;
-        }
-        
-        // Initialize min and max values
-        float min_x = cloud.points[0].x;
-        float max_x = cloud.points[0].x;
-        float min_y = cloud.points[0].y;
-        float max_y = cloud.points[0].y;
-        float min_z = cloud.points[0].z;
-        float max_z = cloud.points[0].z;
-        
-        // Find min and max values
-        for (const auto& point : cloud.points) {
-            min_x = std::min(min_x, point.x);
-            max_x = std::max(max_x, point.x);
-            min_y = std::min(min_y, point.y);
-            max_y = std::max(max_y, point.y);
-            min_z = std::min(min_z, point.z);
-            max_z = std::max(max_z, point.z);
-        }
-        
-        // Calculate spatial scale (dimensions)
-        float scale_x = max_x - min_x;
-        float scale_y = max_y - min_y;
-        float scale_z = max_z - min_z;
-        
-        // Log the statistics
-        RCLCPP_INFO(this->get_logger(), "=== Input Point Cloud Statistics ===");
-        RCLCPP_INFO(this->get_logger(), "Total points: %zu", cloud.size());
-        RCLCPP_INFO(this->get_logger(), "X range: [%.3f, %.3f] meters", min_x, max_x);
-        RCLCPP_INFO(this->get_logger(), "Y range: [%.3f, %.3f] meters", min_y, max_y);
-        RCLCPP_INFO(this->get_logger(), "Z range: [%.3f, %.3f] meters", min_z, max_z);
-        RCLCPP_INFO(this->get_logger(), "Spatial scale: %.3f x %.3f x %.3f meters", scale_x, scale_y, scale_z);
-        RCLCPP_INFO(this->get_logger(), "Bounding box volume: %.3f cubic meters", scale_x * scale_y * scale_z);
-        RCLCPP_INFO(this->get_logger(), "=====================================");
-    }
+    // Removed unused function calculateAndLogPointCloudStatistics
     
     void calculateAndLogOccupancyGridSize(const pointcloud_compressor::CompressionResult& result)
     {

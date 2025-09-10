@@ -36,6 +36,7 @@ struct CompressionResult {
     std::vector<uint16_t> block_indices;
     VoxelGrid voxel_grid;
     std::vector<std::vector<uint8_t>> pattern_dictionary;
+    uint16_t max_index = 0;  // Max index value for efficient encoding determination
     struct {
         double x, y, z;
     } grid_dimensions;

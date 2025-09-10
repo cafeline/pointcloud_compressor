@@ -92,30 +92,7 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
         result.block_indices = indices;
         result.pattern_dictionary = dictionary_builder_->getUniquePatterns();
         
-        // Calculate basic grid information from point cloud bounds
-        if (!cloud.points.empty()) {
-            float min_x = cloud.points[0].x, max_x = cloud.points[0].x;
-            float min_y = cloud.points[0].y, max_y = cloud.points[0].y;
-            float min_z = cloud.points[0].z, max_z = cloud.points[0].z;
-            
-            for (const auto& point : cloud.points) {
-                min_x = std::min(min_x, point.x);
-                max_x = std::max(max_x, point.x);
-                min_y = std::min(min_y, point.y);
-                max_y = std::max(max_y, point.y);
-                min_z = std::min(min_z, point.z);
-                max_z = std::max(max_z, point.z);
-            }
-            
-            result.grid_dimensions.x = max_x - min_x;
-            result.grid_dimensions.y = max_y - min_y;
-            result.grid_dimensions.z = max_z - min_z;
-            result.grid_origin.x = min_x;
-            result.grid_origin.y = min_y;
-            result.grid_origin.z = min_z;
-        }
-        
-        // Calculate actual blocks count from voxel grid dimensions
+        // Get grid information from VoxelGrid
         VoxelCoord dims = grid.getDimensions();
         int x_blocks = (dims.x + settings_.block_size - 1) / settings_.block_size;
         int y_blocks = (dims.y + settings_.block_size - 1) / settings_.block_size;
@@ -125,12 +102,17 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
         result.blocks_count.y = y_blocks;
         result.blocks_count.z = z_blocks;
         
-        // Also get the actual grid origin
+        // Get grid origin and dimensions from VoxelGrid
         float origin_x, origin_y, origin_z;
         grid.getOrigin(origin_x, origin_y, origin_z);
         result.grid_origin.x = origin_x;
         result.grid_origin.y = origin_y;
         result.grid_origin.z = origin_z;
+        
+        // Calculate grid dimensions from voxel dimensions
+        result.grid_dimensions.x = dims.x * settings_.voxel_size;
+        result.grid_dimensions.y = dims.y * settings_.voxel_size;
+        result.grid_dimensions.z = dims.z * settings_.voxel_size;
         
         // Calculate compression ratio
         result.compressed_size = indices.size() * (settings_.use_8bit_indices ? 1 : 2);
