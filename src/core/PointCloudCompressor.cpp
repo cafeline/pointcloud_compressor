@@ -201,6 +201,201 @@ CompressionSettings PointCloudCompressor::findOptimalSettings(const std::string&
     return optimal_settings;
 }
 
+BlockSizeOptimizationResult PointCloudCompressor::findOptimalBlockSize(
+    const std::string& input_file,
+    int min_block_size,
+    int max_block_size,
+    int step_size,
+    bool verbose) {
+    
+    BlockSizeOptimizationResult result;
+    auto start_time = std::chrono::high_resolution_clock::now();
+    
+    // Input validation
+    if (min_block_size < 1) {
+        min_block_size = 1;
+    }
+    if (max_block_size > 64) {
+        max_block_size = 64;  // Reasonable upper limit
+    }
+    if (min_block_size > max_block_size) {
+        std::cerr << "[PointCloudCompressor] Invalid range: min_block_size > max_block_size" << std::endl;
+        result.optimal_block_size = -1;
+        return result;
+    }
+    if (step_size <= 0) {
+        step_size = 1;
+    }
+    
+    // Load point cloud once
+    PointCloud cloud;
+    if (!loadPointCloud(input_file, cloud)) {
+        std::cerr << "[PointCloudCompressor] Failed to load point cloud from " << input_file << std::endl;
+        result.optimal_block_size = -1;
+        return result;
+    }
+    
+    if (cloud.points.empty()) {
+        std::cerr << "[PointCloudCompressor] Point cloud is empty" << std::endl;
+        result.optimal_block_size = -1;
+        return result;
+    }
+    
+    if (verbose) {
+        std::cout << "[PointCloudCompressor] Starting block size optimization..." << std::endl;
+        std::cout << "[PointCloudCompressor] Testing block sizes from " << min_block_size 
+                  << " to " << max_block_size << " with step " << step_size << std::endl;
+    }
+    
+    // Save current settings
+    CompressionSettings original_settings = settings_;
+    
+    // Test each block size
+    for (int block_size = min_block_size; block_size <= max_block_size; block_size += step_size) {
+        if (verbose) {
+            std::cout << "[PointCloudCompressor] Testing block_size = " << block_size << "..." << std::endl;
+        }
+        
+        // Update block size temporarily
+        settings_.block_size = block_size;
+        voxel_processor_->setBlockSize(block_size);
+        
+        try {
+            // Voxelize and divide into blocks
+            std::vector<VoxelBlock> blocks;
+            VoxelGrid grid;
+            if (!voxelizeAndDivideWithGrid(cloud, blocks, grid)) {
+                if (verbose) {
+                    std::cout << "[PointCloudCompressor] Failed to voxelize with block_size = " << block_size << std::endl;
+                }
+                continue;
+            }
+            
+            // Build dictionary and encode
+            std::vector<uint16_t> indices;
+            if (!buildDictionaryAndEncode(blocks, indices)) {
+                if (verbose) {
+                    std::cout << "[PointCloudCompressor] Failed to build dictionary with block_size = " << block_size << std::endl;
+                }
+                continue;
+            }
+            
+            // Calculate compression size accurately
+            size_t original_size = cloud.points.size() * sizeof(Point3D);
+            size_t compressed_size = indices.size() * (settings_.use_8bit_indices ? 1 : 2);
+            
+            // Add dictionary size (pattern_size * unique_patterns)
+            size_t pattern_bytes = (block_size * block_size * block_size + 7) / 8;
+            size_t unique_patterns = dictionary_builder_->getUniquePatternCount();
+            compressed_size += pattern_bytes * unique_patterns;
+            
+            // Calculate compression ratio
+            float compression_ratio = static_cast<float>(compressed_size) / static_cast<float>(original_size);
+            
+            // Calculate comparison with 1 byte/voxel representation
+            // Get total voxel count from grid (including non-occupied)
+            VoxelCoord dims = grid.getDimensions();
+            size_t total_voxels = static_cast<size_t>(dims.x) * dims.y * dims.z;
+            size_t one_byte_per_voxel_size = total_voxels * 1;  // 1 byte per voxel
+            
+            // Our compression size vs 1 byte/voxel
+            float compression_vs_one_byte = static_cast<float>(compressed_size) / static_cast<float>(one_byte_per_voxel_size);
+            
+            if (verbose) {
+                // Calculate detailed statistics
+                size_t occupied_voxels = grid.getOccupiedVoxelCount();
+                
+                // Calculate real-world dimensions
+                float origin_x, origin_y, origin_z;
+                grid.getOrigin(origin_x, origin_y, origin_z);
+                float world_size_x = dims.x * settings_.voxel_size;
+                float world_size_y = dims.y * settings_.voxel_size;
+                float world_size_z = dims.z * settings_.voxel_size;
+                
+                // Calculate different storage sizes
+                size_t one_bit_per_voxel_size = (total_voxels + 7) / 8;  // Round up for bits to bytes
+                
+                // Calculate component sizes
+                size_t codebook_size = pattern_bytes * unique_patterns;
+                size_t index_map_size = indices.size() * (settings_.use_8bit_indices ? 1 : 2);
+                
+                // Calculate compression ratios
+                float compression_vs_one_bit = static_cast<float>(compressed_size) / static_cast<float>(one_bit_per_voxel_size);
+                
+                std::cout << "\n[PointCloudCompressor] ========== Block size " << block_size 
+                          << " Statistics ==========" << std::endl;
+                std::cout << "Real-world dimensions: " 
+                          << world_size_x << "m x " << world_size_y << "m x " << world_size_z << "m" << std::endl;
+                std::cout << "Grid dimensions: " << dims.x << " x " << dims.y << " x " << dims.z << " voxels" << std::endl;
+                std::cout << "Total voxels: " << total_voxels << std::endl;
+                std::cout << "Occupied voxels: " << occupied_voxels 
+                          << " (" << (100.0f * occupied_voxels / total_voxels) << "%)" << std::endl;
+                std::cout << "-------- Storage Sizes --------" << std::endl;
+                std::cout << "1 byte/voxel map size: " << one_byte_per_voxel_size << " bytes" << std::endl;
+                std::cout << "1 bit/voxel map size: " << one_bit_per_voxel_size << " bytes" << std::endl;
+                std::cout << "-------- Compressed Map --------" << std::endl;
+                std::cout << "Codebook size: " << codebook_size << " bytes (" 
+                          << unique_patterns << " patterns x " << pattern_bytes << " bytes)" << std::endl;
+                std::cout << "Index map size: " << index_map_size << " bytes (" 
+                          << indices.size() << " indices x " << (settings_.use_8bit_indices ? 1 : 2) << " bytes)" << std::endl;
+                std::cout << "Total compressed size: " << compressed_size << " bytes" << std::endl;
+                std::cout << "-------- Compression Ratios --------" << std::endl;
+                std::cout << "vs 1 byte/voxel: " << compression_vs_one_byte 
+                          << " (" << (1.0f / compression_vs_one_byte) << "x smaller)" << std::endl;
+                std::cout << "vs 1 bit/voxel: " << compression_vs_one_bit 
+                          << " (" << (1.0f / compression_vs_one_bit) << "x smaller)" << std::endl;
+                std::cout << "vs original points: " << compression_ratio << std::endl;
+                std::cout << "=====================================\n" << std::endl;
+            }
+            
+            // Store result
+            result.tested_results[block_size] = compression_ratio;
+            
+            // Update best result if this is better
+            if (compression_ratio < result.best_compression_ratio) {
+                result.best_compression_ratio = compression_ratio;
+                result.optimal_block_size = block_size;
+            }
+            
+        } catch (const std::exception& e) {
+            if (verbose) {
+                std::cerr << "[PointCloudCompressor] Exception with block_size = " << block_size 
+                          << ": " << e.what() << std::endl;
+            }
+        }
+    }
+    
+    // Restore original settings
+    settings_ = original_settings;
+    voxel_processor_->setBlockSize(original_settings.block_size);
+    
+    // Calculate optimization time
+    auto end_time = std::chrono::high_resolution_clock::now();
+    result.optimization_time_ms = std::chrono::duration_cast<std::chrono::microseconds>(
+        end_time - start_time).count() / 1000.0;
+    
+    if (verbose) {
+        std::cout << "[PointCloudCompressor] Optimization complete in " << result.optimization_time_ms << " ms" << std::endl;
+        if (result.optimal_block_size > 0) {
+            std::cout << "[PointCloudCompressor] Optimal block size: " << result.optimal_block_size
+                      << " with compression ratio: " << result.best_compression_ratio << std::endl;
+        }
+    }
+    
+    // If no valid result was found, set a default
+    if (result.optimal_block_size < 0 && !result.tested_results.empty()) {
+        // Find the best from what we tested
+        for (const auto& [block_size, ratio] : result.tested_results) {
+            if (ratio < result.best_compression_ratio) {
+                result.best_compression_ratio = ratio;
+                result.optimal_block_size = block_size;
+            }
+        }
+    }
+    
+    return result;
+}
+
 void PointCloudCompressor::updateSettings(const CompressionSettings& settings) {
     settings_ = settings;
     voxel_processor_->setVoxelSize(settings_.voxel_size);

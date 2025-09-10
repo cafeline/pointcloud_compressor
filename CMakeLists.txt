@@ -18,6 +18,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(std_srvs REQUIRED)
 
 # Include directories
 include_directories(
@@ -83,10 +84,19 @@ ament_target_dependencies(${PROJECT_NAME}_node
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 target_link_libraries(${PROJECT_NAME}_node "${cpp_typesupport_target}")
 
+# Build block size optimizer node
+add_executable(block_size_optimizer_node src/ros/block_size_optimizer_node.cpp)
+target_link_libraries(block_size_optimizer_node ${PROJECT_NAME}_core)
+ament_target_dependencies(block_size_optimizer_node
+  rclcpp
+  std_msgs
+  std_srvs
+)
+
 # Installation
 install(TARGETS ${PROJECT_NAME}_core
   DESTINATION lib)
-install(TARGETS ${PROJECT_NAME}_cli ${PROJECT_NAME}_node
+install(TARGETS ${PROJECT_NAME}_cli ${PROJECT_NAME}_node block_size_optimizer_node
   DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY include/
@@ -174,6 +184,10 @@ if(BUILD_TESTING)
   # Voxel Grid Reuse Test
   ament_add_gtest(test_voxel_grid_reuse test/test_voxel_grid_reuse.cpp)
   target_link_libraries(test_voxel_grid_reuse ${PROJECT_NAME}_core)
+  
+  # Block Size Optimization Test
+  ament_add_gtest(test_block_size_optimization test/test_block_size_optimization.cpp)
+  target_link_libraries(test_block_size_optimization ${PROJECT_NAME}_core)
 endif()
 
 # Export dependencies

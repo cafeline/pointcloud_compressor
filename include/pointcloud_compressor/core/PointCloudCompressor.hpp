@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include <optional>
+#include <map>
 #include "pointcloud_compressor/io/PointCloudIO.hpp"
 #include "pointcloud_compressor/core/VoxelProcessor.hpp"
 #include "pointcloud_compressor/core/PatternDictionaryBuilder.hpp"
@@ -48,6 +49,13 @@ struct CompressionResult {
     } blocks_count;
 };
 
+struct BlockSizeOptimizationResult {
+    int optimal_block_size = -1;
+    float best_compression_ratio = 1.0f;
+    std::map<int, float> tested_results;  // block_size -> compression_ratio
+    double optimization_time_ms = 0.0;
+};
+
 class PointCloudCompressor {
 public:
     // Constructor
@@ -68,6 +76,14 @@ public:
     CompressionSettings findOptimalSettings(const std::string& input_file,
                                            float min_voxel_size = 0.005f,
                                            float max_voxel_size = 0.05f);
+    
+    // Find optimal block size
+    BlockSizeOptimizationResult findOptimalBlockSize(
+        const std::string& input_file,
+        int min_block_size = 4,
+        int max_block_size = 32,
+        int step_size = 1,
+        bool verbose = false);
     
     // Update settings
     void updateSettings(const CompressionSettings& settings);
