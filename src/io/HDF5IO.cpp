@@ -78,6 +78,86 @@ bool HDF5IO::isValidHDF5(const std::string& filename) const {
     return is_hdf5 > 0;
 }
 
+bool HDF5IO::writeRawVoxelGrid(const std::string& filename, const RawVoxelGridData& data) {
+    // Ensure directory exists
+    std::filesystem::path filepath(filename);
+    if (!std::filesystem::exists(filepath.parent_path())) {
+        last_error_ = "Directory does not exist: " + filepath.parent_path().string();
+        return false;
+    }
+
+    // Create HDF5 file
+    hid_t file_id = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+    if (file_id < 0) {
+        last_error_ = "Failed to create HDF5 file: " + filename;
+        return false;
+    }
+
+    bool ok = true;
+    // Create group /raw_voxel_grid
+    hid_t group_id = H5Gcreate2(file_id, "/raw_voxel_grid", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    if (group_id < 0) {
+        ok = false;
+    } else {
+        // dimensions (3)
+        if (ok) {
+            hsize_t dims1 = 3;
+            hid_t space = H5Screate_simple(1, &dims1, NULL);
+            hid_t ds = H5Dcreate2(group_id, "dimensions", H5T_NATIVE_UINT32, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (ds >= 0) {
+                uint32_t dims_buf[3] = {data.dim_x, data.dim_y, data.dim_z};
+                H5Dwrite(ds, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, dims_buf);
+                H5Dclose(ds);
+            } else ok = false;
+            H5Sclose(space);
+        }
+        // voxel_size (scalar)
+        if (ok) {
+            hsize_t one = 1;
+            hid_t space = H5Screate_simple(1, &one, NULL);
+            hid_t ds = H5Dcreate2(group_id, "voxel_size", H5T_NATIVE_FLOAT, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (ds >= 0) {
+                float v = data.voxel_size;
+                H5Dwrite(ds, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &v);
+                H5Dclose(ds);
+            } else ok = false;
+            H5Sclose(space);
+        }
+        // origin (3)
+        if (ok) {
+            hsize_t dims1 = 3;
+            hid_t space = H5Screate_simple(1, &dims1, NULL);
+            hid_t ds = H5Dcreate2(group_id, "origin", H5T_NATIVE_FLOAT, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (ds >= 0) {
+                float origin_buf[3] = {data.origin[0], data.origin[1], data.origin[2]};
+                H5Dwrite(ds, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, origin_buf);
+                H5Dclose(ds);
+            } else ok = false;
+            H5Sclose(space);
+        }
+        // occupied_voxels (N x 3)
+        if (ok) {
+            hsize_t dims2[2] = {data.occupied_voxels.size(), 3};
+            hid_t space = H5Screate_simple(2, dims2, NULL);
+            hid_t ds = H5Dcreate2(group_id, "occupied_voxels", H5T_NATIVE_INT32, space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (ds >= 0) {
+                if (!data.occupied_voxels.empty()) {
+                    H5Dwrite(ds, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, data.occupied_voxels.data());
+                }
+                H5Dclose(ds);
+            } else ok = false;
+            H5Sclose(space);
+        }
+        H5Gclose(group_id);
+    }
+
+    H5Fclose(file_id);
+    if (!ok) {
+        std::filesystem::remove(filename);
+    }
+    return ok;
+}
+
 bool HDF5IO::createGroup(hid_t file_id, const std::string& group_name) {
     hid_t group_id = H5Gcreate2(file_id, group_name.c_str(), 
                                 H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);

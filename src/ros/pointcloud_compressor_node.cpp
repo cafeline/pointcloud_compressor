@@ -50,6 +50,9 @@ private:
         this->declare_parameter("publish_occupied_voxel_markers", false);
         this->declare_parameter("save_hdf5", false);
         this->declare_parameter("hdf5_output_file", "/tmp/compressed_map.h5");
+        // Save raw (pre-compression) occupancy grid
+        this->declare_parameter("save_raw_hdf5", false);
+        this->declare_parameter("raw_hdf5_output_file", "/tmp/raw_voxel_grid.h5");
     }
     
     void getParameters()
@@ -74,6 +77,9 @@ private:
         // Get HDF5 settings
         save_hdf5_ = this->get_parameter("save_hdf5").as_bool();
         hdf5_output_file_ = this->get_parameter("hdf5_output_file").as_string();
+        // Raw occupancy grid save parameters
+        save_raw_hdf5_ = this->get_parameter("save_raw_hdf5").as_bool();
+        raw_hdf5_output_file_ = this->get_parameter("raw_hdf5_output_file").as_string();
     }
     
     bool validateConfiguration()
@@ -137,6 +143,10 @@ private:
         // Save to HDF5 if requested
         if (save_hdf5_) {
             saveToHDF5(compression_result);
+        }
+        // Save raw occupancy grid if requested
+        if (save_raw_hdf5_) {
+            saveRawVoxelGridToHDF5(compression_result);
         }
         
         // Publish results
@@ -595,6 +605,47 @@ private:
             RCLCPP_ERROR(this->get_logger(), "Failed to save HDF5 file: %s", hdf5_io.getLastError().c_str());
         }
     }
+
+    void saveRawVoxelGridToHDF5(const pointcloud_compressor::CompressionResult& result)
+    {
+        pointcloud_compressor::HDF5IO hdf5_io;
+        pointcloud_compressor::HDF5IO::RawVoxelGridData raw;
+
+        // Dimensions and voxel size
+        auto dims = result.voxel_grid.getDimensions();
+        raw.dim_x = static_cast<uint32_t>(dims.x);
+        raw.dim_y = static_cast<uint32_t>(dims.y);
+        raw.dim_z = static_cast<uint32_t>(dims.z);
+        raw.voxel_size = settings_.voxel_size;
+
+        // Origin
+        float ox, oy, oz;
+        result.voxel_grid.getOrigin(ox, oy, oz);
+        raw.origin = {ox, oy, oz};
+
+        // Collect occupied voxel indices
+        int estimated = result.voxel_grid.getOccupiedVoxelCount();
+        if (estimated > 0) raw.occupied_voxels.reserve(static_cast<size_t>(estimated));
+        for (int z = 0; z < dims.z; ++z) {
+            for (int y = 0; y < dims.y; ++y) {
+                for (int x = 0; x < dims.x; ++x) {
+                    if (result.voxel_grid.getVoxel(x, y, z)) {
+                        raw.occupied_voxels.push_back({x, y, z});
+                    }
+                }
+            }
+        }
+
+        if (hdf5_io.writeRawVoxelGrid(raw_hdf5_output_file_, raw)) {
+            RCLCPP_INFO(this->get_logger(), "Saved raw voxel grid to HDF5 file: %s", raw_hdf5_output_file_.c_str());
+            if (std::filesystem::exists(raw_hdf5_output_file_)) {
+                auto file_size = std::filesystem::file_size(raw_hdf5_output_file_);
+                RCLCPP_INFO(this->get_logger(), "Raw HDF5 file size: %.2f KB", file_size / 1024.0);
+            }
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "Failed to save raw HDF5 file: %s", hdf5_io.getLastError().c_str());
+        }
+    }
     
     void cleanupTempFiles(const std::string& prefix)
     {
@@ -620,6 +671,8 @@ private:
     int publish_interval_ms_;
     bool save_hdf5_;
     std::string hdf5_output_file_;
+    bool save_raw_hdf5_;
+    std::string raw_hdf5_output_file_;
     pointcloud_compressor::CompressionSettings settings_;
 };
 

@@ -75,6 +75,19 @@ public:
      */
     std::string getLastError() const { return last_error_; }
 
+    // --- Raw voxel grid (pre-compression) I/O ---
+    struct RawVoxelGridData {
+        uint32_t dim_x = 0, dim_y = 0, dim_z = 0;
+        float voxel_size = 0.0f;
+        std::array<float,3> origin{0.0f, 0.0f, 0.0f};
+        std::vector<std::array<int32_t,3>> occupied_voxels; // voxel indices (x,y,z)
+    };
+
+    /**
+     * @brief Write raw occupancy voxel grid to HDF5 file under /raw_voxel_grid
+     */
+    bool writeRawVoxelGrid(const std::string& filename, const RawVoxelGridData& data);
+
 private:
     std::string last_error_;
     
