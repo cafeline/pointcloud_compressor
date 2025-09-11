@@ -103,7 +103,7 @@ TEST_F(PatternEncoderTest, RoundTrip16bit) {
     
     // Verify all indices match
     for (size_t i = 0; i < original_indices.size(); ++i) {
-        EXPECT_EQ(decoded_indices[i], original_indices[i]);
+        EXPECT_EQ(decoded_indices[i], static_cast<uint64_t>(original_indices[i]));
     }
 }
 
@@ -206,7 +206,10 @@ TEST_F(PatternEncoderTest, BoundaryValues8bit) {
     std::vector<uint64_t> decoded_indices;
     bool decode_result = encoder.decodePatterns(filename, decoded_indices);
     EXPECT_TRUE(decode_result);
-    EXPECT_EQ(decoded_indices, boundary_indices);
+    
+    // Convert boundary_indices to uint64_t for comparison
+    std::vector<uint64_t> expected_indices(boundary_indices.begin(), boundary_indices.end());
+    EXPECT_EQ(decoded_indices, expected_indices);
 }
 
 // Test with one value just over 8-bit limit

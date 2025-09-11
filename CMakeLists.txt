@@ -9,6 +9,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(OpenMP)
+find_package(HDF5 REQUIRED COMPONENTS C CXX HL)
 
 # ROS2 dependencies
 find_package(rclcpp REQUIRED)
@@ -24,6 +25,7 @@ find_package(std_srvs REQUIRED)
 include_directories(
   include
   ${EIGEN3_INCLUDE_DIRS}
+  ${HDF5_INCLUDE_DIRS}
 )
 
 # Generate messages
@@ -42,6 +44,7 @@ set(CORE_SOURCES
   src/io/PlyIO.cpp
   src/io/FileFormatDetector.cpp
   src/io/PointCloudIO.cpp
+  src/io/HDF5IO.cpp
   src/model/VoxelGrid.cpp
   src/core/VoxelProcessor.cpp
   src/core/PatternDictionaryBuilder.cpp
@@ -61,6 +64,9 @@ if(OpenMP_CXX_FOUND)
   target_link_libraries(${PROJECT_NAME}_core PUBLIC OpenMP::OpenMP_CXX)
   target_compile_definitions(${PROJECT_NAME}_core PUBLIC USE_OPENMP)
 endif()
+
+# Link HDF5 libraries
+target_link_libraries(${PROJECT_NAME}_core PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_HL_LIBRARIES})
 
 # Main executable
 add_executable(${PROJECT_NAME}_cli src/pointcloud_compressor.cpp)
@@ -192,6 +198,10 @@ if(BUILD_TESTING)
   # Voxel Round Trip Test
   ament_add_gtest(test_voxel_round_trip test/test_voxel_round_trip.cpp)
   target_link_libraries(test_voxel_round_trip ${PROJECT_NAME}_core)
+  
+  # HDF5 I/O Test
+  ament_add_gtest(test_hdf5_io test/test_hdf5_io.cpp)
+  target_link_libraries(test_hdf5_io ${PROJECT_NAME}_core)
 endif()
 
 # Export dependencies

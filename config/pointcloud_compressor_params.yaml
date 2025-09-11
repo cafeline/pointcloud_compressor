@@ -56,6 +56,14 @@ pointcloud_compressor_node:
       # Enable quality validation
       validate_reconstruction: false
     
+    # HDF5 output settings
+    hdf5:
+      # Enable saving compressed data to HDF5 file
+      save_hdf5: true
+      
+      # Output HDF5 file path
+      hdf5_output_file: "/tmp/compressed_map.h5"
+    
     # Logging settings
     logging:
       # Log level: DEBUG, INFO, WARN, ERROR

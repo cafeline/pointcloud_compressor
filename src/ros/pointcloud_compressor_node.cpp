@@ -7,11 +7,14 @@
 #include <filesystem>
 #include <chrono>
 #include <algorithm>
+#include <iomanip>
+#include <limits>
 
 #include "pointcloud_compressor/msg/pattern_dictionary.hpp"
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/core/VoxelProcessor.hpp"
 #include "pointcloud_compressor/io/PointCloudIO.hpp"
+#include "pointcloud_compressor/io/HDF5IO.hpp"
 
 class PointCloudCompressorNode : public rclcpp::Node
 {
@@ -45,6 +48,8 @@ private:
         this->declare_parameter("publish_once", true);
         this->declare_parameter("publish_interval_ms", 1000);
         this->declare_parameter("publish_occupied_voxel_markers", false);
+        this->declare_parameter("save_hdf5", false);
+        this->declare_parameter("hdf5_output_file", "/tmp/compressed_map.h5");
     }
     
     void getParameters()
@@ -65,6 +70,10 @@ private:
         publish_once_ = this->get_parameter("publish_once").as_bool();
         publish_interval_ms_ = this->get_parameter("publish_interval_ms").as_int();
         publish_occupied_voxel_markers_ = this->get_parameter("publish_occupied_voxel_markers").as_bool();
+        
+        // Get HDF5 settings
+        save_hdf5_ = this->get_parameter("save_hdf5").as_bool();
+        hdf5_output_file_ = this->get_parameter("hdf5_output_file").as_string();
     }
     
     bool validateConfiguration()
@@ -125,6 +134,11 @@ private:
             return;
         }
 
+        // Save to HDF5 if requested
+        if (save_hdf5_) {
+            saveToHDF5(compression_result);
+        }
+        
         // Publish results
         publishPatternDictionary(compression_result);
         publishOccupiedVoxelMarkers();
@@ -467,6 +481,121 @@ private:
         RCLCPP_INFO(this->get_logger(), "========================================");
     }
     
+    void saveToHDF5(const pointcloud_compressor::CompressionResult& result)
+    {
+        pointcloud_compressor::HDF5IO hdf5_io;
+        pointcloud_compressor::CompressedMapData hdf5_data;
+        
+        // Set metadata
+        auto now = std::chrono::system_clock::now();
+        auto time_t = std::chrono::system_clock::to_time_t(now);
+        std::stringstream ss;
+        ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
+        hdf5_data.creation_time = ss.str();
+        hdf5_data.frame_id = "map";
+        
+        // Set compression parameters
+        hdf5_data.voxel_size = settings_.voxel_size;
+        hdf5_data.dictionary_size = result.num_unique_patterns;
+        hdf5_data.block_size = settings_.block_size;
+        hdf5_data.pattern_bits = (result.max_index < 256) ? 8 : 16;
+        
+        // Grid origin from voxel grid
+        {
+            float ox = 0.0f, oy = 0.0f, oz = 0.0f;
+            result.voxel_grid.getOrigin(ox, oy, oz);
+            hdf5_data.grid_origin = {ox, oy, oz};
+        }
+        
+        // Set dictionary data
+        hdf5_data.pattern_length = settings_.block_size * settings_.block_size * settings_.block_size;
+        
+        // Convert pattern dictionary to byte array
+        for (const auto& pattern : result.pattern_dictionary) {
+            hdf5_data.dictionary_patterns.insert(hdf5_data.dictionary_patterns.end(), 
+                                                pattern.begin(), pattern.end());
+        }
+        
+        // Convert block indices to HDF5 format
+        hdf5_data.voxel_indices.reserve(result.block_indices.size());
+        
+        for (size_t i = 0; i < result.block_indices.size(); ++i) {
+            hdf5_data.voxel_indices.push_back(static_cast<uint16_t>(result.block_indices[i]));
+        }
+        
+        // Extract voxel positions from voxel grid
+        // For simplicity, we'll extract block positions from indices
+        // The actual voxel positions need to be calculated based on block grid layout
+        auto dims = result.voxel_grid.getDimensions();
+        int blocks_per_dim_x = (dims.x + settings_.block_size - 1) / settings_.block_size;
+        int blocks_per_dim_y = (dims.y + settings_.block_size - 1) / settings_.block_size;
+        int blocks_per_dim_z = (dims.z + settings_.block_size - 1) / settings_.block_size;
+        
+        hdf5_data.voxel_positions.reserve(result.block_indices.size());
+        
+        // For each block index, we need to determine its position
+        // This is a simplified approach - the actual mapping depends on how blocks are indexed
+        int block_index = 0;
+        for (int bz = 0; bz < blocks_per_dim_z; ++bz) {
+            for (int by = 0; by < blocks_per_dim_y; ++by) {
+                for (int bx = 0; bx < blocks_per_dim_x; ++bx) {
+                    if (block_index < static_cast<int>(result.block_indices.size())) {
+                        hdf5_data.voxel_positions.push_back(std::array<int32_t, 3>{bx, by, bz});
+                        block_index++;
+                    }
+                }
+            }
+        }
+        
+        // Set statistics
+        hdf5_data.original_points = result.original_size;
+        hdf5_data.compressed_voxels = result.num_blocks;
+        hdf5_data.compression_ratio = result.compression_ratio;
+        
+        // Calculate bounding box from voxel positions
+        if (!hdf5_data.voxel_positions.empty()) {
+            auto min_x = std::numeric_limits<int32_t>::max();
+            auto min_y = std::numeric_limits<int32_t>::max();
+            auto min_z = std::numeric_limits<int32_t>::max();
+            auto max_x = std::numeric_limits<int32_t>::min();
+            auto max_y = std::numeric_limits<int32_t>::min();
+            auto max_z = std::numeric_limits<int32_t>::min();
+            
+            for (const auto& pos : hdf5_data.voxel_positions) {
+                min_x = std::min(min_x, pos[0]);
+                min_y = std::min(min_y, pos[1]);
+                min_z = std::min(min_z, pos[2]);
+                max_x = std::max(max_x, pos[0]);
+                max_y = std::max(max_y, pos[1]);
+                max_z = std::max(max_z, pos[2]);
+            }
+            
+            hdf5_data.bounding_box_min = {
+                static_cast<double>(min_x) * settings_.voxel_size,
+                static_cast<double>(min_y) * settings_.voxel_size,
+                static_cast<double>(min_z) * settings_.voxel_size
+            };
+            hdf5_data.bounding_box_max = {
+                static_cast<double>(max_x + 1) * settings_.voxel_size,
+                static_cast<double>(max_y + 1) * settings_.voxel_size,
+                static_cast<double>(max_z + 1) * settings_.voxel_size
+            };
+        }
+        
+        // Write to HDF5 file
+        if (hdf5_io.write(hdf5_output_file_, hdf5_data)) {
+            RCLCPP_INFO(this->get_logger(), "Saved compressed map to HDF5 file: %s", hdf5_output_file_.c_str());
+            
+            // Log file size
+            if (std::filesystem::exists(hdf5_output_file_)) {
+                auto file_size = std::filesystem::file_size(hdf5_output_file_);
+                RCLCPP_INFO(this->get_logger(), "HDF5 file size: %.2f KB", file_size / 1024.0);
+            }
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "Failed to save HDF5 file: %s", hdf5_io.getLastError().c_str());
+        }
+    }
+    
     void cleanupTempFiles(const std::string& prefix)
     {
         std::vector<std::string> extensions = {"_dict.bin", "_indices.bin", "_meta.bin"};
@@ -489,6 +618,8 @@ private:
     bool publish_occupied_voxel_markers_;
     bool publish_once_;
     int publish_interval_ms_;
+    bool save_hdf5_;
+    std::string hdf5_output_file_;
     pointcloud_compressor::CompressionSettings settings_;
 };
 
