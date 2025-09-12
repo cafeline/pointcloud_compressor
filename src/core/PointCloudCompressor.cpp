@@ -652,7 +652,7 @@ bool PointCloudCompressor::reconstructVoxelGrid(const std::vector<uint64_t>& ind
                     return false;
                 }
                 
-                uint16_t pattern_index = indices[block_index++];
+                uint64_t pattern_index = indices[block_index++];
                 
                 if (pattern_index >= unique_patterns.size()) {
                     std::cerr << "Error: Pattern index " << pattern_index 

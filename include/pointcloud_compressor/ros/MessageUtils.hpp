@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <cstdint>
+#include <algorithm>
 #include "pointcloud_compressor/msg/pattern_dictionary.hpp"
 
 namespace pointcloud_compressor {
@@ -110,6 +111,116 @@ public:
         }
         
         return 0; // No savings if 16-bit encoding is required
+    }
+
+    /**
+     * 追加: 32/64bitエンコード/デコード（上位互換）
+     */
+    static std::vector<uint64_t> extractBlockIndices64(
+        const pointcloud_compressor::msg::PatternDictionary& msg)
+    {
+        std::vector<uint64_t> indices;
+        const auto& data = msg.block_indices_data;
+        switch (msg.index_bit_size) {
+            case 8: {
+                indices.reserve(data.size());
+                for (uint8_t b : data) indices.push_back(static_cast<uint64_t>(b));
+                break;
+            }
+            case 16: {
+                size_t n = data.size() / 2;
+                indices.reserve(n);
+                for (size_t i = 0; i + 1 < data.size(); i += 2) {
+                    uint16_t v = static_cast<uint16_t>(data[i]) |
+                                 (static_cast<uint16_t>(data[i+1]) << 8);
+                    indices.push_back(static_cast<uint64_t>(v));
+                }
+                break;
+            }
+            case 32: {
+                size_t n = data.size() / 4;
+                indices.reserve(n);
+                for (size_t i = 0; i + 3 < data.size(); i += 4) {
+                    uint32_t v = static_cast<uint32_t>(data[i]) |
+                                 (static_cast<uint32_t>(data[i+1]) << 8) |
+                                 (static_cast<uint32_t>(data[i+2]) << 16) |
+                                 (static_cast<uint32_t>(data[i+3]) << 24);
+                    indices.push_back(static_cast<uint64_t>(v));
+                }
+                break;
+            }
+            case 64: {
+                size_t n = data.size() / 8;
+                indices.reserve(n);
+                for (size_t i = 0; i + 7 < data.size(); i += 8) {
+                    uint64_t v =  static_cast<uint64_t>(data[i]) |
+                                 (static_cast<uint64_t>(data[i+1]) << 8) |
+                                 (static_cast<uint64_t>(data[i+2]) << 16) |
+                                 (static_cast<uint64_t>(data[i+3]) << 24) |
+                                 (static_cast<uint64_t>(data[i+4]) << 32) |
+                                 (static_cast<uint64_t>(data[i+5]) << 40) |
+                                 (static_cast<uint64_t>(data[i+6]) << 48) |
+                                 (static_cast<uint64_t>(data[i+7]) << 56);
+                    indices.push_back(v);
+                }
+                break;
+            }
+            default:
+                // 未対応サイズ
+                break;
+        }
+        return indices;
+    }
+
+    static void packBlockIndices(
+        const std::vector<uint64_t>& indices,
+        uint8_t& index_bit_size,
+        std::vector<uint8_t>& packed_data)
+    {
+        packed_data.clear();
+        uint64_t max_index = 0;
+        if (!indices.empty()) {
+            max_index = *std::max_element(indices.begin(), indices.end());
+        }
+
+        if (max_index <= 0xFFull) {
+            index_bit_size = 8;
+            packed_data.reserve(indices.size());
+            for (uint64_t v : indices) {
+                packed_data.push_back(static_cast<uint8_t>(v & 0xFF));
+            }
+        } else if (max_index <= 0xFFFFull) {
+            index_bit_size = 16;
+            packed_data.reserve(indices.size() * 2);
+            for (uint64_t v : indices) {
+                uint16_t w = static_cast<uint16_t>(v);
+                packed_data.push_back(static_cast<uint8_t>(w & 0xFF));
+                packed_data.push_back(static_cast<uint8_t>((w >> 8) & 0xFF));
+            }
+        } else if (max_index <= 0xFFFF'FFFFull) {
+            index_bit_size = 32;
+            packed_data.reserve(indices.size() * 4);
+            for (uint64_t v : indices) {
+                uint32_t w = static_cast<uint32_t>(v);
+                packed_data.push_back(static_cast<uint8_t>(w & 0xFF));
+                packed_data.push_back(static_cast<uint8_t>((w >> 8) & 0xFF));
+                packed_data.push_back(static_cast<uint8_t>((w >> 16) & 0xFF));
+                packed_data.push_back(static_cast<uint8_t>((w >> 24) & 0xFF));
+            }
+        } else {
+            index_bit_size = 64;
+            packed_data.reserve(indices.size() * 8);
+            for (uint64_t w : indices) {
+                packed_data.push_back(static_cast<uint8_t>(w & 0xFF));
+                packed_data.push_back(static_cast<uint8_t>((w >> 8) & 0xFF));
+                packed_data.push_back(static_cast<uint8_t>((w >> 16) & 0xFF));
+                packed_data.push_back(static_cast<uint8_t>((w >> 24) & 0xFF));
+                packed_data.push_back(static_cast<uint8_t>((w >> 32) & 0xFF));
+                packed_data.push_back(static_cast<uint8_t>((w >> 40) & 0xFF));
+                packed_data.push_back(static_cast<uint8_t>((w >> 48) & 0xFF));
+                packed_data.push_back(static_cast<uint8_t>((w >> 56) & 0xFF));
+            }
+        }
     }
 };
 

@@ -184,8 +184,15 @@ if(BUILD_TESTING)
     ${PROJECT_NAME}_core
     ${PROJECT_NAME}__rosidl_typesupport_cpp
   )
-  ament_target_dependencies(test_ros_message_utils ${dependencies})
   add_dependencies(test_ros_message_utils ${PROJECT_NAME}__rosidl_typesupport_cpp)
+  
+  # ROS Message Utils Advanced (32/64-bit) Test
+  ament_add_gtest(test_ros_message_utils_advanced test/test_ros_message_utils_advanced.cpp)
+  target_link_libraries(test_ros_message_utils_advanced 
+    ${PROJECT_NAME}_core
+    ${PROJECT_NAME}__rosidl_typesupport_cpp
+  )
+  add_dependencies(test_ros_message_utils_advanced ${PROJECT_NAME}__rosidl_typesupport_cpp)
   
   # Voxel Grid Reuse Test
   ament_add_gtest(test_voxel_grid_reuse test/test_voxel_grid_reuse.cpp)

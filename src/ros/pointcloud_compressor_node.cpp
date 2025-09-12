@@ -282,7 +282,11 @@ private:
 
         // Set pattern dictionary
         msg.num_patterns = static_cast<uint32_t>(result.num_unique_patterns);
-        msg.pattern_size_bytes = 64;  // 8x8x8 block = 512 bits = 64 bytes
+        // block_size^3 bits => ceil(bits/8) bytes
+        const uint32_t pattern_bits = static_cast<uint32_t>(settings_.block_size) *
+                                      static_cast<uint32_t>(settings_.block_size) *
+                                      static_cast<uint32_t>(settings_.block_size);
+        msg.pattern_size_bytes = (pattern_bits + 7) / 8;
 
         // Set pattern data
         if (!result.pattern_dictionary.empty()) {
@@ -442,11 +446,8 @@ private:
         int total_blocks = result.num_blocks;
         int block_size_3d = settings_.block_size * settings_.block_size * settings_.block_size;
         
-        // 4. Block indices array size
-        size_t block_indices_size = result.block_indices.size() * sizeof(uint16_t);
-        if (settings_.use_8bit_indices) {
-            block_indices_size = result.block_indices.size() * sizeof(uint8_t);
-        }
+        // 4. Block indices array size（実際のbit幅に基づく）
+        size_t block_indices_size = result.block_indices.size() * (result.index_bit_size / 8);
         
         // 5. Pattern dictionary size
         size_t pattern_dict_size = result.pattern_dictionary.size() * block_size_3d / 8;  // Each pattern is block_size^3 bits
@@ -478,8 +479,8 @@ private:
         RCLCPP_INFO(this->get_logger(), "Block Size: %d x %d x %d = %d voxels per block", 
                     settings_.block_size, settings_.block_size, settings_.block_size, block_size_3d);
         RCLCPP_INFO(this->get_logger(), "Total Blocks: %d", total_blocks);
-        RCLCPP_INFO(this->get_logger(), "Block Indices Size: %zu bytes (%s)", 
-                    block_indices_size, settings_.use_8bit_indices ? "8-bit" : "16-bit");
+        RCLCPP_INFO(this->get_logger(), "Block Indices Size: %zu bytes (%u-bit)", 
+                    block_indices_size, static_cast<unsigned>(result.index_bit_size));
         RCLCPP_INFO(this->get_logger(), "Pattern Dictionary: %zu patterns, %zu bytes (%.2f KB)", 
                     result.num_unique_patterns, pattern_dict_size, pattern_dict_size / 1024.0);
         RCLCPP_INFO(this->get_logger(), "Metadata Size: %zu bytes", metadata_size);
