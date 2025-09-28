@@ -505,11 +505,13 @@ private:
         hdf5_data.creation_time = ss.str();
         hdf5_data.frame_id = "map";
         
-        // Set compression parameters
+        // Set compression parameters（pattern_bitsはパターンのビット数としてblock_size^3）
         hdf5_data.voxel_size = settings_.voxel_size;
         hdf5_data.dictionary_size = result.num_unique_patterns;
         hdf5_data.block_size = settings_.block_size;
-        hdf5_data.pattern_bits = (result.max_index < 256) ? 8 : 16;
+        hdf5_data.pattern_bits = static_cast<uint32_t>(settings_.block_size) *
+                                 static_cast<uint32_t>(settings_.block_size) *
+                                 static_cast<uint32_t>(settings_.block_size);
         
         // Grid origin from voxel grid
         {
@@ -527,69 +529,95 @@ private:
                                                 pattern.begin(), pattern.end());
         }
         
-        // Convert block indices to HDF5 format
-        hdf5_data.voxel_indices.reserve(result.block_indices.size());
-        
-        for (size_t i = 0; i < result.block_indices.size(); ++i) {
-            hdf5_data.voxel_indices.push_back(static_cast<uint16_t>(result.block_indices[i]));
-        }
-        
-        // Extract voxel positions from voxel grid
-        // For simplicity, we'll extract block positions from indices
-        // The actual voxel positions need to be calculated based on block grid layout
-        auto dims = result.voxel_grid.getDimensions();
-        int blocks_per_dim_x = (dims.x + settings_.block_size - 1) / settings_.block_size;
-        int blocks_per_dim_y = (dims.y + settings_.block_size - 1) / settings_.block_size;
-        int blocks_per_dim_z = (dims.z + settings_.block_size - 1) / settings_.block_size;
-        
-        hdf5_data.voxel_positions.reserve(result.block_indices.size());
-        
-        // For each block index, we need to determine its position
-        // This is a simplified approach - the actual mapping depends on how blocks are indexed
-        int block_index = 0;
-        for (int bz = 0; bz < blocks_per_dim_z; ++bz) {
-            for (int by = 0; by < blocks_per_dim_y; ++by) {
-                for (int bx = 0; bx < blocks_per_dim_x; ++bx) {
-                    if (block_index < static_cast<int>(result.block_indices.size())) {
-                        hdf5_data.voxel_positions.push_back(std::array<int32_t, 3>{bx, by, bz});
-                        block_index++;
-                    }
-                }
+        // Prepare dense block index grid metadata
+        auto grid_dims = result.voxel_grid.getDimensions();
+        const int blocks_per_dim_x = (grid_dims.x + settings_.block_size - 1) / settings_.block_size;
+        const int blocks_per_dim_y = (grid_dims.y + settings_.block_size - 1) / settings_.block_size;
+        const int blocks_per_dim_z = (grid_dims.z + settings_.block_size - 1) / settings_.block_size;
+
+        hdf5_data.block_dims = {blocks_per_dim_x, blocks_per_dim_y, blocks_per_dim_z};
+        hdf5_data.block_offset = {0, 0, 0};
+
+        const size_t total_blocks = static_cast<size_t>(blocks_per_dim_x) *
+                                    static_cast<size_t>(blocks_per_dim_y) *
+                                    static_cast<size_t>(blocks_per_dim_z);
+
+        auto determine_bit_width = [](uint64_t value) {
+            if (value <= std::numeric_limits<uint8_t>::max()) {
+                return static_cast<uint8_t>(8);
             }
+            if (value <= std::numeric_limits<uint16_t>::max()) {
+                return static_cast<uint8_t>(16);
+            }
+            if (value <= std::numeric_limits<uint32_t>::max()) {
+                return static_cast<uint8_t>(32);
+            }
+            return static_cast<uint8_t>(64);
+        };
+
+        auto sentinel_for_width = [](uint8_t bit_width) {
+            switch (bit_width) {
+                case 8:  return static_cast<uint64_t>(std::numeric_limits<uint8_t>::max());
+                case 16: return static_cast<uint64_t>(std::numeric_limits<uint16_t>::max());
+                case 32: return static_cast<uint64_t>(std::numeric_limits<uint32_t>::max());
+                default: return std::numeric_limits<uint64_t>::max();
+            }
+        };
+
+        uint8_t bit_width = result.index_bit_size > 0
+                                ? static_cast<uint8_t>(result.index_bit_size)
+                                : determine_bit_width(result.max_index);
+        if (bit_width != 8 && bit_width != 16 && bit_width != 32 && bit_width != 64) {
+            bit_width = determine_bit_width(result.max_index);
         }
-        
-        // Set statistics
-        hdf5_data.original_points = result.original_size;
+        bit_width = std::max(bit_width, determine_bit_width(result.max_index));
+        const uint64_t sentinel = sentinel_for_width(bit_width);
+
+        hdf5_data.block_index_bit_width = bit_width;
+        hdf5_data.block_index_sentinel = sentinel;
+        hdf5_data.block_indices.assign(total_blocks, sentinel);
+
+        if (result.block_indices.size() != total_blocks) {
+            RCLCPP_WARN(this->get_logger(),
+                        "Block index count (%zu) does not match expected dense grid size (%zu)",
+                        result.block_indices.size(), total_blocks);
+        }
+
+        const size_t copy_count = std::min(total_blocks, result.block_indices.size());
+        for (size_t i = 0; i < copy_count; ++i) {
+            hdf5_data.block_indices[i] = result.block_indices[i];
+        }
+
+        // Set statistics（original_points は点数を格納）
+        hdf5_data.original_points = static_cast<uint64_t>(result.original_size / (3 * sizeof(float)));
         hdf5_data.compressed_voxels = result.num_blocks;
         hdf5_data.compression_ratio = result.compression_ratio;
-        
-        // Calculate bounding box from voxel positions
-        if (!hdf5_data.voxel_positions.empty()) {
-            auto min_x = std::numeric_limits<int32_t>::max();
-            auto min_y = std::numeric_limits<int32_t>::max();
-            auto min_z = std::numeric_limits<int32_t>::max();
-            auto max_x = std::numeric_limits<int32_t>::min();
-            auto max_y = std::numeric_limits<int32_t>::min();
-            auto max_z = std::numeric_limits<int32_t>::min();
-            
-            for (const auto& pos : hdf5_data.voxel_positions) {
-                min_x = std::min(min_x, pos[0]);
-                min_y = std::min(min_y, pos[1]);
-                min_z = std::min(min_z, pos[2]);
-                max_x = std::max(max_x, pos[0]);
-                max_y = std::max(max_y, pos[1]);
-                max_z = std::max(max_z, pos[2]);
-            }
-            
+
+        // Calculate bounding box from block grid metadata
+        if (total_blocks > 0) {
+            const double block_extent = static_cast<double>(settings_.block_size) * settings_.voxel_size;
+            const auto& offset = hdf5_data.block_offset;
+            const auto dims_arr = hdf5_data.block_dims;
+            const std::array<double, 3> origin_d = {
+                static_cast<double>(hdf5_data.grid_origin[0]),
+                static_cast<double>(hdf5_data.grid_origin[1]),
+                static_cast<double>(hdf5_data.grid_origin[2])
+            };
+            const std::array<int32_t, 3> max_offset = {
+                offset[0] + dims_arr[0],
+                offset[1] + dims_arr[1],
+                offset[2] + dims_arr[2]
+            };
+
             hdf5_data.bounding_box_min = {
-                static_cast<double>(min_x) * settings_.voxel_size,
-                static_cast<double>(min_y) * settings_.voxel_size,
-                static_cast<double>(min_z) * settings_.voxel_size
+                origin_d[0] + block_extent * static_cast<double>(offset[0]),
+                origin_d[1] + block_extent * static_cast<double>(offset[1]),
+                origin_d[2] + block_extent * static_cast<double>(offset[2])
             };
             hdf5_data.bounding_box_max = {
-                static_cast<double>(max_x + 1) * settings_.voxel_size,
-                static_cast<double>(max_y + 1) * settings_.voxel_size,
-                static_cast<double>(max_z + 1) * settings_.voxel_size
+                origin_d[0] + block_extent * static_cast<double>(max_offset[0]),
+                origin_d[1] + block_extent * static_cast<double>(max_offset[1]),
+                origin_d[2] + block_extent * static_cast<double>(max_offset[2])
             };
         }
         

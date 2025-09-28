@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iostream>
 #include <limits>
+#include <chrono>
 
 namespace pointcloud_compressor {
 
@@ -28,7 +29,13 @@ bool PatternEncoder::encodePatterns8bit(const std::vector<uint16_t>& indices,
 
 bool PatternEncoder::decodePatterns(const std::string& input_filename, 
                                    std::vector<uint64_t>& indices) {
-    return readIndices(input_filename, indices);
+    auto t0 = std::chrono::high_resolution_clock::now();
+    bool ok = readIndices(input_filename, indices);
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0;
+    std::cout << "[PROFILE][PatternEncoder] decode indices=" << indices.size()
+              << ", time=" << ms << " ms" << std::endl;
+    return ok;
 }
 
 bool PatternEncoder::encodePatternsAuto(const std::vector<uint64_t>& indices,
@@ -47,19 +54,30 @@ bool PatternEncoder::encodePatternsAuto(const std::vector<uint64_t>& indices,
 bool PatternEncoder::encodePatternsWithBitSize(const std::vector<uint64_t>& indices,
                                               const std::string& output_filename,
                                               int bit_size) {
+    auto t0 = std::chrono::high_resolution_clock::now();
+    bool ok = false;
     switch (bit_size) {
         case 8:
-            return writeIndices8bit(indices, output_filename);
+            ok = writeIndices8bit(indices, output_filename);
+            break;
         case 16:
-            return writeIndices16bit(indices, output_filename);
+            ok = writeIndices16bit(indices, output_filename);
+            break;
         case 32:
-            return writeIndices32bit(indices, output_filename);
+            ok = writeIndices32bit(indices, output_filename);
+            break;
         case 64:
-            return writeIndices64bit(indices, output_filename);
+            ok = writeIndices64bit(indices, output_filename);
+            break;
         default:
             std::cerr << "Invalid bit size: " << bit_size << std::endl;
             return false;
     }
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0;
+    std::cout << "[PROFILE][PatternEncoder] encode " << bit_size << "-bit indices=" << indices.size()
+              << ", time=" << ms << " ms" << std::endl;
+    return ok;
 }
 
 int PatternEncoder::getRequiredBitSize(uint64_t max_value) {

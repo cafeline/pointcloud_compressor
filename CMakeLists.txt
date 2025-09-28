@@ -135,6 +135,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_ply_io ${PROJECT_NAME}_core)
   target_compile_definitions(test_ply_io PRIVATE TEST_DATA_DIR="${TEST_DATA_DIR}")
   
+  # PLY property order Test (ASCII extra property before x,y,z)
+  ament_add_gtest(test_ply_property_order test/test_ply_property_order.cpp)
+  target_link_libraries(test_ply_property_order ${PROJECT_NAME}_core)
+  
   # File Format Detector Test
   ament_add_gtest(test_file_format_detector test/test_file_format_detector.cpp)
   target_link_libraries(test_file_format_detector ${PROJECT_NAME}_core)
@@ -144,6 +148,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_pointcloud_io test/test_pointcloud_io.cpp)
   target_link_libraries(test_pointcloud_io ${PROJECT_NAME}_core)
   target_compile_definitions(test_pointcloud_io PRIVATE TEST_DATA_DIR="${TEST_DATA_DIR}")
+  
+  # PCD binary with extra property
+  ament_add_gtest(test_pcd_binary_extra_property test/test_pcd_binary_extra_property.cpp)
+  target_link_libraries(test_pcd_binary_extra_property ${PROJECT_NAME}_core)
   
   # Voxel Processor Test
   ament_add_gtest(test_voxel_processor test/test_voxel_processor.cpp)

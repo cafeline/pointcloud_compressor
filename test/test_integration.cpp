@@ -79,12 +79,9 @@ TEST_F(IntegrationTest, CompressAndDecompress) {
     // Compress
     auto compression_result = compressor.compress(test_pcd_file, output_prefix);
     
-    // Note: Since our implementation is incomplete, we expect this to fail currently
-    // When implementation is complete, change these expectations
-    EXPECT_FALSE(compression_result.success);  // Will be TRUE when fully implemented
-    
-    // For now, just verify the compressor doesn't crash
-    EXPECT_FALSE(compression_result.error_message.empty());
+    // 現実装では成功することを期待
+    EXPECT_TRUE(compression_result.success);
+    EXPECT_TRUE(compression_result.error_message.empty());
 }
 
 // Test compression ratio calculation

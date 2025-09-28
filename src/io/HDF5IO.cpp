@@ -1,11 +1,15 @@
 #include <pointcloud_compressor/io/HDF5IO.hpp>
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <sstream>
+#include <vector>
 
 namespace pointcloud_compressor {
 
 bool HDF5IO::write(const std::string& filename, const CompressedMapData& data) {
+    auto t0 = std::chrono::high_resolution_clock::now();
     // Check if directory exists
     std::filesystem::path filepath(filename);
     if (!std::filesystem::exists(filepath.parent_path())) {
@@ -37,10 +41,14 @@ bool HDF5IO::write(const std::string& filename, const CompressedMapData& data) {
         std::filesystem::remove(filename);
     }
     
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0;
+    std::cout << "[PROFILE][HDF5IO] write file='" << filename << "' time=" << ms << " ms" << std::endl;
     return success;
 }
 
 bool HDF5IO::read(const std::string& filename, CompressedMapData& data) {
+    auto t0 = std::chrono::high_resolution_clock::now();
     // Check if file exists
     if (!std::filesystem::exists(filename)) {
         last_error_ = "File does not exist: " + filename;
@@ -66,6 +74,9 @@ bool HDF5IO::read(const std::string& filename, CompressedMapData& data) {
     // Close file
     H5Fclose(file_id);
     
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0;
+    std::cout << "[PROFILE][HDF5IO] read file='" << filename << "' time=" << ms << " ms" << std::endl;
     return success;
 }
 
@@ -79,6 +90,7 @@ bool HDF5IO::isValidHDF5(const std::string& filename) const {
 }
 
 bool HDF5IO::writeRawVoxelGrid(const std::string& filename, const RawVoxelGridData& data) {
+    auto t0 = std::chrono::high_resolution_clock::now();
     // Ensure directory exists
     std::filesystem::path filepath(filename);
     if (!std::filesystem::exists(filepath.parent_path())) {
@@ -155,6 +167,9 @@ bool HDF5IO::writeRawVoxelGrid(const std::string& filename, const RawVoxelGridDa
     if (!ok) {
         std::filesystem::remove(filename);
     }
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0;
+    std::cout << "[PROFILE][HDF5IO] write raw grid file='" << filename << "' time=" << ms << " ms" << std::endl;
     return ok;
 }
 
@@ -298,6 +313,13 @@ bool HDF5IO::writeCompressionParams(hid_t file_id, const CompressedMapData& data
                          H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     H5Dwrite(dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data.block_size);
     H5Dclose(dataset);
+
+    // block index bit width (helps consumers pick correct integer width for block indices)
+    uint32_t bit_width = static_cast<uint32_t>(data.block_index_bit_width);
+    dataset = H5Dcreate2(group_id, "block_index_bit_width", H5T_NATIVE_UINT32, dataspace,
+                         H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    H5Dwrite(dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bit_width);
+    H5Dclose(dataset);
     
     // grid_origin (vector length 3)
     H5Sclose(dataspace);
@@ -354,6 +376,17 @@ bool HDF5IO::readCompressionParams(hid_t file_id, CompressedMapData& data) {
         dataset = H5Dopen2(group_id, "block_size", H5P_DEFAULT);
         H5Dread(dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data.block_size);
         H5Dclose(dataset);
+    }
+
+    // block index bit width (optional metadata)
+    if (H5Lexists(group_id, "block_index_bit_width", H5P_DEFAULT)) {
+        uint32_t bit_width = 0;
+        dataset = H5Dopen2(group_id, "block_index_bit_width", H5P_DEFAULT);
+        H5Dread(dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bit_width);
+        H5Dclose(dataset);
+        if (bit_width == 8 || bit_width == 16 || bit_width == 32 || bit_width == 64) {
+            data.block_index_bit_width = static_cast<uint8_t>(bit_width);
+        }
     }
     
     // grid_origin
@@ -446,49 +479,209 @@ bool HDF5IO::readDictionary(hid_t file_id, CompressedMapData& data) {
 
 bool HDF5IO::writeCompressedData(hid_t file_id, const CompressedMapData& data) {
     if (!createGroup(file_id, "/compressed_data")) {
+        last_error_ = "Failed to create /compressed_data group";
         return false;
     }
-    
+
     hid_t group_id = H5Gopen2(file_id, "/compressed_data", H5P_DEFAULT);
     if (group_id < 0) {
+        last_error_ = "Failed to open /compressed_data group";
         return false;
     }
-    
-    // Write voxel indices
-    if (!data.voxel_indices.empty()) {
-        hsize_t dims = data.voxel_indices.size();
-        hid_t dataspace = H5Screate_simple(1, &dims, NULL);
-        hid_t dataset = H5Dcreate2(group_id, "indices", H5T_NATIVE_UINT16, dataspace,
-                                   H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        H5Dwrite(dataset, H5T_NATIVE_UINT16, H5S_ALL, H5S_ALL, H5P_DEFAULT,
-                data.voxel_indices.data());
-        H5Dclose(dataset);
-        H5Sclose(dataspace);
+
+    auto close_group = [&]() {
+        if (group_id >= 0) {
+            H5Gclose(group_id);
+            group_id = -1;
+        }
+    };
+
+    auto is_valid_bit_width = [](uint8_t bit_width) {
+        return bit_width == 8 || bit_width == 16 || bit_width == 32 || bit_width == 64;
+    };
+
+    auto required_bit_width = [](uint64_t value) {
+        if (value <= std::numeric_limits<uint8_t>::max()) {
+            return static_cast<uint8_t>(8);
+        }
+        if (value <= std::numeric_limits<uint16_t>::max()) {
+            return static_cast<uint8_t>(16);
+        }
+        if (value <= std::numeric_limits<uint32_t>::max()) {
+            return static_cast<uint8_t>(32);
+        }
+        return static_cast<uint8_t>(64);
+    };
+
+    auto sentinel_for_width = [](uint8_t bit_width) {
+        switch (bit_width) {
+            case 8:  return static_cast<uint64_t>(std::numeric_limits<uint8_t>::max());
+            case 16: return static_cast<uint64_t>(std::numeric_limits<uint16_t>::max());
+            case 32: return static_cast<uint64_t>(std::numeric_limits<uint32_t>::max());
+            default: return std::numeric_limits<uint64_t>::max();
+        }
+    };
+
+    const bool has_block_grid = !data.block_indices.empty() &&
+                                data.block_dims[0] > 0 &&
+                                data.block_dims[1] > 0 &&
+                                data.block_dims[2] > 0;
+
+    if (has_block_grid) {
+        const size_t expected_size = static_cast<size_t>(data.block_dims[0]) *
+                                     static_cast<size_t>(data.block_dims[1]) *
+                                     static_cast<size_t>(data.block_dims[2]);
+
+        if (data.block_indices.size() != expected_size) {
+            close_group();
+            last_error_ = "block_indices size does not match block_dims product";
+            return false;
+        }
+
+        uint64_t max_value = 0;
+        for (uint64_t value : data.block_indices) {
+            if (value == data.block_index_sentinel) {
+                continue;
+            }
+            max_value = std::max(max_value, value);
+        }
+
+        uint8_t bit_width = is_valid_bit_width(data.block_index_bit_width)
+                                ? data.block_index_bit_width
+                                : static_cast<uint8_t>(16);
+        bit_width = std::max(bit_width, required_bit_width(max_value));
+        const uint64_t sentinel_value = sentinel_for_width(bit_width);
+        const uint64_t input_sentinel = data.block_index_sentinel == 0
+                                            ? sentinel_value
+                                            : data.block_index_sentinel;
+
+        hsize_t dims = static_cast<hsize_t>(expected_size);
+        hid_t dataspace = H5Screate_simple(1, &dims, nullptr);
+        if (dataspace < 0) {
+            close_group();
+            last_error_ = "Failed to create dataspace for block_indices";
+            return false;
+        }
+
+        auto write_and_close = [&](hid_t native_type, auto&& buffer) {
+            hid_t dataset = H5Dcreate2(group_id, "block_indices", native_type, dataspace,
+                                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (dataset < 0) {
+                H5Sclose(dataspace);
+                close_group();
+                last_error_ = "Failed to create block_indices dataset";
+                return false;
+            }
+            herr_t status = H5Dwrite(dataset, native_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer.data());
+            H5Dclose(dataset);
+            H5Sclose(dataspace);
+            if (status < 0) {
+                close_group();
+                last_error_ = "Failed to write block_indices dataset";
+                return false;
+            }
+            return true;
+        };
+
+        auto convert_or_fail = [&](auto example_value, hid_t native_type) {
+            using ValueType = decltype(example_value);
+            std::vector<ValueType> buffer(expected_size);
+            for (size_t i = 0; i < expected_size; ++i) {
+                const uint64_t value = data.block_indices[i];
+                if (value == input_sentinel) {
+                    buffer[i] = static_cast<ValueType>(sentinel_value);
+                    continue;
+                }
+                if (value > sentinel_value - 1) {
+                    H5Sclose(dataspace);
+                    close_group();
+                    last_error_ = "block index value exceeds selected integer width";
+                    return false;
+                }
+                buffer[i] = static_cast<ValueType>(value);
+            }
+            return write_and_close(native_type, buffer);
+        };
+
+        bool ok = true;
+        switch (bit_width) {
+            case 8:
+                ok = convert_or_fail(uint8_t{}, H5T_NATIVE_UINT8);
+                break;
+            case 16:
+                ok = convert_or_fail(uint16_t{}, H5T_NATIVE_UINT16);
+                break;
+            case 32:
+                ok = convert_or_fail(uint32_t{}, H5T_NATIVE_UINT32);
+                break;
+            case 64: {
+                std::vector<uint64_t> buffer(expected_size);
+                for (size_t i = 0; i < expected_size; ++i) {
+                    const uint64_t value = data.block_indices[i];
+                    buffer[i] = (value == input_sentinel) ? sentinel_value : value;
+                }
+                ok = write_and_close(H5T_NATIVE_UINT64, buffer);
+                break;
+            }
+            default:
+                ok = false;
+                break;
+        }
+
+        if (!ok) {
+            return false;
+        }
     }
-    
-    // Write voxel positions
-    if (!data.voxel_positions.empty()) {
-        hsize_t dims[2] = {data.voxel_positions.size(), 3};
-        hid_t dataspace = H5Screate_simple(2, dims, NULL);
-        hid_t dataset = H5Dcreate2(group_id, "voxel_positions", H5T_NATIVE_INT32, dataspace,
-                                   H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-        H5Dwrite(dataset, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL, H5P_DEFAULT,
-                data.voxel_positions.data());
-        H5Dclose(dataset);
-        H5Sclose(dataspace);
+
+    // block_offset dataset
+    {
+        hsize_t dims = 3;
+        hid_t dataspace = H5Screate_simple(1, &dims, nullptr);
+        if (dataspace >= 0) {
+            int32_t buffer[3] = {data.block_offset[0], data.block_offset[1], data.block_offset[2]};
+            hid_t dataset = H5Dcreate2(group_id, "block_offset", H5T_NATIVE_INT32, dataspace,
+                                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (dataset >= 0) {
+                H5Dwrite(dataset, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer);
+                H5Dclose(dataset);
+            }
+            H5Sclose(dataspace);
+        }
     }
-    
-    // Write point count
-    hsize_t scalar_dims = 1;
-    hid_t dataspace = H5Screate_simple(1, &scalar_dims, NULL);
-    hid_t dataset = H5Dcreate2(group_id, "point_count", H5T_NATIVE_UINT64, dataspace,
-                               H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-    uint64_t count = data.voxel_positions.size();
-    H5Dwrite(dataset, H5T_NATIVE_UINT64, H5S_ALL, H5S_ALL, H5P_DEFAULT, &count);
-    H5Dclose(dataset);
-    H5Sclose(dataspace);
-    
-    H5Gclose(group_id);
+
+    // block_dims dataset
+    {
+        hsize_t dims = 3;
+        hid_t dataspace = H5Screate_simple(1, &dims, nullptr);
+        if (dataspace >= 0) {
+            int32_t buffer[3] = {data.block_dims[0], data.block_dims[1], data.block_dims[2]};
+            hid_t dataset = H5Dcreate2(group_id, "block_dims", H5T_NATIVE_INT32, dataspace,
+                                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (dataset >= 0) {
+                H5Dwrite(dataset, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer);
+                H5Dclose(dataset);
+            }
+            H5Sclose(dataspace);
+        }
+    }
+
+    // Retain point_count dataset for compatibility (stores number of blocks)
+    {
+        hsize_t dims = 1;
+        hid_t dataspace = H5Screate_simple(1, &dims, nullptr);
+        if (dataspace >= 0) {
+            hid_t dataset = H5Dcreate2(group_id, "point_count", H5T_NATIVE_UINT64, dataspace,
+                                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+            if (dataset >= 0) {
+                uint64_t count = data.compressed_voxels;
+                H5Dwrite(dataset, H5T_NATIVE_UINT64, H5S_ALL, H5S_ALL, H5P_DEFAULT, &count);
+                H5Dclose(dataset);
+            }
+            H5Sclose(dataspace);
+        }
+    }
+
+    close_group();
     return true;
 }
 

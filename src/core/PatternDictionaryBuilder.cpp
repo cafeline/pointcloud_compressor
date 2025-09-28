@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#include <chrono>
 
 namespace pointcloud_compressor {
 
@@ -10,6 +11,7 @@ PatternDictionaryBuilder::PatternDictionaryBuilder() {}
 PatternDictionaryBuilder::~PatternDictionaryBuilder() {}
 
 bool PatternDictionaryBuilder::buildDictionary(const std::vector<std::vector<uint8_t>>& patterns) {
+    auto t0 = std::chrono::high_resolution_clock::now();
     unique_patterns_.clear();
     pattern_indices_.clear();
     pattern_to_index_.clear();
@@ -36,6 +38,11 @@ bool PatternDictionaryBuilder::buildDictionary(const std::vector<std::vector<uin
         }
     }
     
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0;
+    std::cout << "[PROFILE][DictionaryBuilder] patterns=" << patterns.size()
+              << ", unique=" << unique_patterns_.size()
+              << ", time=" << ms << " ms" << std::endl;
     return !unique_patterns_.empty();
 }
 

@@ -8,6 +8,7 @@
 namespace pointcloud_compressor {
 
 bool PcdIO::readPcdFile(const std::string& filename, PointCloud& cloud) {
+    auto t0 = std::chrono::high_resolution_clock::now();
     // Clear existing data
     cloud.clear();
     
@@ -34,14 +35,22 @@ bool PcdIO::readPcdFile(const std::string& filename, PointCloud& cloud) {
     
     // Parse header
     PcdHeader header;
+    auto th0 = std::chrono::high_resolution_clock::now();
     if (!parseHeaderInternal(file, header)) {
         std::cerr << "Error: Failed to parse PCD header" << std::endl;
         return false;
     }
+    auto th1 = std::chrono::high_resolution_clock::now();
     
     // Read data based on type
     if (header.data_type == "ascii") {
-        return readAsciiData(file, cloud, header);
+        bool ok = readAsciiData(file, cloud, header);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        double header_ms = std::chrono::duration_cast<std::chrono::microseconds>(th1 - th0).count() / 1000.0;
+        double total_ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0;
+        std::cout << "[PROFILE][PcdIO] data=ascii, header=" << header_ms << " ms, total=" << total_ms
+                  << " ms, points=" << header.points << std::endl;
+        return ok;
     } else if (header.data_type == "binary" || header.data_type == "binary_compressed") {
         // For binary data, we need to reopen the file in binary mode
         std::streampos data_start = file.tellg();
@@ -57,7 +66,14 @@ bool PcdIO::readPcdFile(const std::string& filename, PointCloud& cloud) {
         // Skip to data section
         binary_file.seekg(data_start);
         
-        return readBinaryData(binary_file, cloud, header);
+        bool ok = readBinaryData(binary_file, cloud, header);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        double header_ms = std::chrono::duration_cast<std::chrono::microseconds>(th1 - th0).count() / 1000.0;
+        double total_ms = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count() / 1000.0;
+        std::cout << "[PROFILE][PcdIO] data=" << header.data_type
+                  << ", header=" << header_ms << " ms, total=" << total_ms
+                  << " ms, points=" << header.points << std::endl;
+        return ok;
     } else {
         std::cerr << "Error: Unknown PCD data type: " << header.data_type << std::endl;
         return false;

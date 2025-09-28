@@ -5,6 +5,7 @@
 #include <memory>
 #include <cstdint>
 #include <array>
+#include <limits>
 #include <hdf5.h>
 #include <hdf5_hl.h>
 
@@ -29,9 +30,16 @@ struct CompressedMapData {
     std::vector<uint8_t> dictionary_patterns;  // Flattened pattern data
     uint32_t pattern_length = 512;  // 8x8x8 = 512 bits per pattern
     
-    // Compressed data
-    std::vector<uint16_t> voxel_indices;  // Dictionary indices for each voxel
-    std::vector<std::array<int32_t, 3>> voxel_positions;  // Voxel grid positions
+    // New block index grid representation
+    std::array<int32_t, 3> block_offset = {0, 0, 0};
+    std::array<int32_t, 3> block_dims = {0, 0, 0};
+    uint8_t block_index_bit_width = 16;  // 8, 16, 32, 64 bits
+    uint64_t block_index_sentinel = std::numeric_limits<uint16_t>::max();
+    std::vector<uint64_t> block_indices;  // Flattened block index grid (row-major: x + dim_x*(y + dim_y*z))
+
+    // Legacy compressed data (retained for backward compatibility when reading old files)
+    std::vector<uint16_t> voxel_indices;
+    std::vector<std::array<int32_t, 3>> voxel_positions;
     
     // Statistics
     uint64_t original_points = 0;

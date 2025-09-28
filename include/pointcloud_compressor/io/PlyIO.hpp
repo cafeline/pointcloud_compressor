@@ -17,6 +17,7 @@ struct PlyHeader {
     int vertex_count;           // number of vertices
     std::vector<std::string> comments;  // comment lines
     std::vector<std::string> properties; // property definitions
+    std::vector<std::string> property_names; // parsed property names (e.g., x,y,z,...)
     
     PlyHeader() : format("ascii"), version("1.0"), vertex_count(0) {}
 };
