@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <limits>
+#include <sstream>
 
 #include "pointcloud_compressor/msg/pattern_dictionary.hpp"
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
@@ -24,15 +25,15 @@ public:
         // Initialize parameters and setup
         declareParameters();
         getParameters();
-        
+
         if (!validateConfiguration()) {
             return;
         }
-        
+
         setupPublishers();
         setupTimer();
-        
-        RCLCPP_INFO(this->get_logger(), "PointCloud Compressor Node initialized - Input: %s, Voxel: %.3f", 
+
+        RCLCPP_INFO(this->get_logger(), "PointCloud Compressor Node initialized - Input: %s, Voxel: %.3f",
                     input_file_.c_str(), settings_.voxel_size);
     }
 
@@ -54,7 +55,7 @@ private:
         this->declare_parameter("save_raw_hdf5", false);
         this->declare_parameter("raw_hdf5_output_file", "/tmp/raw_voxel_grid.h5");
     }
-    
+
     void getParameters()
     {
         // Get input file (with backward compatibility)
@@ -62,18 +63,18 @@ private:
         if (input_file_.empty()) {
             input_file_ = this->get_parameter("input_pcd_file").as_string();
         }
-        
+
         // Get compression settings
         settings_.voxel_size = this->get_parameter("voxel_size").as_double();
         settings_.block_size = this->get_parameter("block_size").as_int();
         settings_.use_8bit_indices = this->get_parameter("use_8bit_indices").as_bool();
         settings_.min_points_threshold = this->get_parameter("min_points_threshold").as_int();
-        
+
         // Get publishing settings
         publish_once_ = this->get_parameter("publish_once").as_bool();
         publish_interval_ms_ = this->get_parameter("publish_interval_ms").as_int();
         publish_occupied_voxel_markers_ = this->get_parameter("publish_occupied_voxel_markers").as_bool();
-        
+
         // Get HDF5 settings
         save_hdf5_ = this->get_parameter("save_hdf5").as_bool();
         hdf5_output_file_ = this->get_parameter("hdf5_output_file").as_string();
@@ -81,7 +82,7 @@ private:
         save_raw_hdf5_ = this->get_parameter("save_raw_hdf5").as_bool();
         raw_hdf5_output_file_ = this->get_parameter("raw_hdf5_output_file").as_string();
     }
-    
+
     bool validateConfiguration()
     {
         // Validate input file
@@ -89,31 +90,31 @@ private:
             RCLCPP_ERROR(this->get_logger(), "No input file specified. Use parameter 'input_file' or 'input_pcd_file'");
             return false;
         }
-        
+
         // Initialize compressor
         compressor_ = std::make_unique<pointcloud_compressor::PointCloudCompressor>(settings_);
-        
+
         if (!compressor_->validateInputFile(input_file_)) {
             RCLCPP_ERROR(this->get_logger(), "Invalid input file: %s", input_file_.c_str());
             return false;
         }
-        
+
         return true;
     }
-    
+
     void setupPublishers()
     {
         // Pattern dictionary publisher
         pattern_dict_pub_ = this->create_publisher<pointcloud_compressor::msg::PatternDictionary>(
             "pattern_dictionary", 10);
-        
+
         // Occupied voxel marker publisher (optional)
         if (publish_occupied_voxel_markers_) {
             marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(
                 "occupied_voxel_markers", 10);
         }
     }
-    
+
     void setupTimer()
     {
         if (publish_once_) {
@@ -148,60 +149,52 @@ private:
         if (save_raw_hdf5_) {
             saveRawVoxelGridToHDF5(compression_result);
         }
-        
+
         // Publish results
         publishPatternDictionary(compression_result);
         publishOccupiedVoxelMarkers();
-        
+
         compressed_published_ = true;
     }
-    
+
     pointcloud_compressor::CompressionResult performCompression()
     {
-        auto start_time = std::chrono::high_resolution_clock::now();
         std::string temp_prefix = "/tmp/compressed_" + std::to_string(this->now().nanoseconds());
-        
+
         auto compression_result = compressor_->compress(input_file_, temp_prefix);
-        
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto compression_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-        
+
         if (compression_result.success) {
             // Store max index for reuse
             compression_result.max_index = 0;
             if (!compression_result.block_indices.empty()) {
-                compression_result.max_index = *std::max_element(compression_result.block_indices.begin(), 
+                compression_result.max_index = *std::max_element(compression_result.block_indices.begin(),
                                                                 compression_result.block_indices.end());
             }
-            bool using_8bit = (compression_result.max_index < 256);
-            
-            RCLCPP_INFO(this->get_logger(), "Compression completed: %ld ms, ratio %.3f, patterns %zu, %s encoding", 
-                        compression_duration.count(), compression_result.compression_ratio, 
-                        compression_result.num_unique_patterns, using_8bit ? "8-bit" : "16-bit");
-            
+            logCompressionSummary(compression_result);
+
             // Calculate and log occupancy grid map size
             calculateAndLogOccupancyGridSize(compression_result);
         }
-        
+
         // Clean up temporary files
         cleanupTempFiles(temp_prefix);
-        
+
         return compression_result;
     }
-    
+
     void publishPatternDictionary(const pointcloud_compressor::CompressionResult& result)
     {
         auto start = std::chrono::high_resolution_clock::now();
         auto msg = createPatternDictionaryMessage(result);
         auto create_end = std::chrono::high_resolution_clock::now();
-        
+
         pattern_dict_pub_->publish(msg);
         auto publish_end = std::chrono::high_resolution_clock::now();
-        
+
         auto create_time = std::chrono::duration_cast<std::chrono::microseconds>(create_end - start).count() / 1000.0;
         auto publish_time = std::chrono::duration_cast<std::chrono::microseconds>(publish_end - create_end).count() / 1000.0;
-        
-        RCLCPP_INFO(this->get_logger(), "[ROS Node] Create message: %.2f ms, Publish: %.2f ms", 
+
+        RCLCPP_INFO(this->get_logger(), "[ROS Node] Create message: %.2f ms, Publish: %.2f ms",
                     create_time, publish_time);
     }
 
@@ -236,10 +229,10 @@ private:
 
         // Use pre-calculated index bit size from compression result
         msg.index_bit_size = result.index_bit_size;
-        
+
         // Pack indices based on bit size
         msg.block_indices_data.clear();
-        
+
         if (msg.index_bit_size == 8) {
             // Pack as 8-bit indices
             msg.block_indices_data.reserve(result.block_indices.size());
@@ -276,8 +269,8 @@ private:
                 msg.block_indices_data.push_back(static_cast<uint8_t>((idx >> 56) & 0xFF)); // Byte 7
             }
         }
-        
-        RCLCPP_INFO(this->get_logger(), "Using %u-bit index encoding (max index: %lu)", 
+
+        RCLCPP_INFO(this->get_logger(), "Using %u-bit index encoding (max index: %lu)",
                     msg.index_bit_size, result.max_index);
 
         // Set pattern dictionary
@@ -322,14 +315,14 @@ private:
         marker_pub_->publish(marker_array.value());
         RCLCPP_INFO(this->get_logger(), "Published occupied_voxel_markers: %zu markers", marker_array.value().markers.size());
     }
-    
+
     std::optional<visualization_msgs::msg::MarkerArray> createOccupiedVoxelMarkers()
     {
         // Try to use cached voxel grid first
         auto cached_grid = compressor_->getCachedVoxelGrid();
-        
+
         pointcloud_compressor::VoxelGrid grid;
-        
+
         if (cached_grid.has_value()) {
             // Use cached grid - no need to reload and reprocess
             RCLCPP_DEBUG(this->get_logger(), "Using cached voxel grid for marker visualization");
@@ -343,7 +336,7 @@ private:
         // Create marker array with CUBE_LIST for efficiency
         visualization_msgs::msg::MarkerArray marker_array;
         auto dimensions = grid.getDimensions();
-        
+
         float origin_x, origin_y, origin_z;
         grid.getOrigin(origin_x, origin_y, origin_z);
 
@@ -352,7 +345,7 @@ private:
         std::vector<geometry_msgs::msg::Point> current_points;
         current_points.reserve(MAX_POINTS_PER_MARKER);
         int marker_id = 0;
-        
+
         for (int z = 0; z < dimensions.z; ++z) {
             for (int y = 0; y < dimensions.y; ++y) {
                 for (int x = 0; x < dimensions.x; ++x) {
@@ -362,7 +355,7 @@ private:
                         point.y = origin_y + (y + 0.5) * settings_.voxel_size;
                         point.z = origin_z + (z + 0.5) * settings_.voxel_size;
                         current_points.push_back(point);
-                        
+
                         // Create new CUBE_LIST marker when reaching limit
                         if (current_points.size() >= MAX_POINTS_PER_MARKER) {
                             marker_array.markers.push_back(createCubeListMarker(
@@ -375,25 +368,25 @@ private:
                 }
             }
         }
-        
+
         // Add remaining points
         if (!current_points.empty()) {
             marker_array.markers.push_back(createCubeListMarker(
                 marker_id++, current_points
             ));
         }
-        
-        RCLCPP_INFO(this->get_logger(), "Created %zu CUBE_LIST markers for occupied voxels", 
+
+        RCLCPP_INFO(this->get_logger(), "Created %zu CUBE_LIST markers for occupied voxels",
                     marker_array.markers.size());
-        
+
         return marker_array;
     }
-    
+
     visualization_msgs::msg::Marker createCubeListMarker(
         int id, const std::vector<geometry_msgs::msg::Point>& points)
     {
         visualization_msgs::msg::Marker marker;
-        
+
         marker.header.frame_id = "map";
         marker.header.stamp = this->get_clock()->now();
         marker.id = id;
@@ -419,84 +412,87 @@ private:
         marker.color.g = 1.0;
         marker.color.b = 0.0;
         marker.color.a = 0.5;
-        
+
         // Add all points
         marker.points = points;
-        
+
         return marker;
     }
-    
+
     // Removed unused function calculateAndLogPointCloudStatistics
-    
+
     void calculateAndLogOccupancyGridSize(const pointcloud_compressor::CompressionResult& result)
     {
         // Calculate various components of occupancy grid map size
-        
+
         // 1. Voxel Grid dimensions (get from VoxelGrid directly)
         auto dimensions = result.voxel_grid.getDimensions();
         int voxel_grid_x = dimensions.x;
         int voxel_grid_y = dimensions.y;
         int voxel_grid_z = dimensions.z;
         int total_voxels = voxel_grid_x * voxel_grid_y * voxel_grid_z;
-        
+
         // 2. Voxel Grid raw data size (each voxel stored as uint8_t)
         size_t voxel_grid_size = total_voxels * sizeof(uint8_t);
-        
+
         // 3. Block-based representation
         int total_blocks = result.num_blocks;
         int block_size_3d = settings_.block_size * settings_.block_size * settings_.block_size;
-        
+
         // 4. Block indices array size（実際のbit幅に基づく）
         size_t block_indices_size = result.block_indices.size() * (result.index_bit_size / 8);
-        
+
         // 5. Pattern dictionary size
         size_t pattern_dict_size = result.pattern_dictionary.size() * block_size_3d / 8;  // Each pattern is block_size^3 bits
-        
+
         // 6. Metadata size (dimensions, origin, settings)
-        size_t metadata_size = 
+        size_t metadata_size =
             3 * sizeof(int) +      // grid dimensions
             3 * sizeof(float) +    // grid origin
             sizeof(float) +        // voxel size
             sizeof(int) +          // block size
             sizeof(int);           // min_points_threshold
-        
+
         // 7. Total compressed size
         size_t total_compressed_size = block_indices_size + pattern_dict_size + metadata_size;
-        
+
         // 8. Calculate occupied voxels count
         int occupied_voxels = result.voxel_grid.getOccupiedVoxelCount();
         float occupancy_ratio = result.voxel_grid.getOccupancyRatio();
-        
-        // Log detailed information
-        RCLCPP_INFO(this->get_logger(), "=== Occupancy Grid Map Size Analysis ===");
-        RCLCPP_INFO(this->get_logger(), "Voxel Grid Dimensions: %d x %d x %d = %d total voxels", 
-                    voxel_grid_x, voxel_grid_y, voxel_grid_z, total_voxels);
-        RCLCPP_INFO(this->get_logger(), "Voxel Size: %.3f meters", settings_.voxel_size);
-        RCLCPP_INFO(this->get_logger(), "Occupied Voxels: %d (%.2f%% occupancy)", 
-                    occupied_voxels, occupancy_ratio * 100);
-        RCLCPP_INFO(this->get_logger(), "Raw Voxel Grid Size: %zu bytes (%.2f KB)", 
-                    voxel_grid_size, voxel_grid_size / 1024.0);
-        RCLCPP_INFO(this->get_logger(), "Block Size: %d x %d x %d = %d voxels per block", 
-                    settings_.block_size, settings_.block_size, settings_.block_size, block_size_3d);
-        RCLCPP_INFO(this->get_logger(), "Total Blocks: %d", total_blocks);
-        RCLCPP_INFO(this->get_logger(), "Block Indices Size: %zu bytes (%u-bit)", 
-                    block_indices_size, static_cast<unsigned>(result.index_bit_size));
-        RCLCPP_INFO(this->get_logger(), "Pattern Dictionary: %zu patterns, %zu bytes (%.2f KB)", 
-                    result.num_unique_patterns, pattern_dict_size, pattern_dict_size / 1024.0);
-        RCLCPP_INFO(this->get_logger(), "Metadata Size: %zu bytes", metadata_size);
-        RCLCPP_INFO(this->get_logger(), "Total Compressed Size: %zu bytes (%.2f KB)", 
-                    total_compressed_size, total_compressed_size / 1024.0);
-        RCLCPP_INFO(this->get_logger(), "Memory Reduction: %.2f%% (from %.2f KB to %.2f KB)", 
-                    (1.0 - (double)total_compressed_size / voxel_grid_size) * 100,
-                    voxel_grid_size / 1024.0, total_compressed_size / 1024.0);
-        RCLCPP_INFO(this->get_logger(), "========================================");
+        double occupancy_percent = occupancy_ratio * 100.0;
+        double memory_reduction = (voxel_grid_size == 0)
+            ? 0.0
+            : (1.0 - static_cast<double>(total_compressed_size) / static_cast<double>(voxel_grid_size)) * 100.0;
+
+        std::ostringstream summary;
+        summary << "\n[ROS][Occupancy Grid]\n"
+                << "  Grid dims        : " << voxel_grid_x << " x " << voxel_grid_y << " x "
+                << voxel_grid_z << " (" << total_voxels << " voxels)" << '\n'
+                << "  Voxel size       : " << formatFloat(settings_.voxel_size, 3) << " m" << '\n'
+                << "  Occupied voxels  : " << occupied_voxels << " (" << std::fixed << std::setprecision(2)
+                << occupancy_percent << "%)" << '\n'
+                << "  Raw grid         : " << voxel_grid_size << " bytes ("
+                << formatKilobytes(voxel_grid_size) << " KB)" << '\n'
+                << "  Block size       : " << settings_.block_size << "^3 = " << block_size_3d << " voxels" << '\n'
+                << "  Blocks total     : " << total_blocks << '\n'
+                << "  Block indices    : " << block_indices_size << " bytes ("
+                << result.index_bit_size << "-bit)" << '\n'
+                << "  Pattern dict     : " << result.num_unique_patterns << " patterns, "
+                << pattern_dict_size << " bytes (" << formatKilobytes(pattern_dict_size) << " KB)" << '\n'
+                << "  Metadata         : " << metadata_size << " bytes" << '\n'
+                << "  Compressed total : " << total_compressed_size << " bytes ("
+                << formatKilobytes(total_compressed_size) << " KB)" << '\n'
+                << "  Memory reduction : " << std::fixed << std::setprecision(2)
+                << memory_reduction << "%%";
+
+        RCLCPP_INFO(this->get_logger(), "%s", summary.str().c_str());
     }
-    
+
     void saveToHDF5(const pointcloud_compressor::CompressionResult& result)
     {
         pointcloud_compressor::HDF5IO hdf5_io;
         pointcloud_compressor::CompressedMapData hdf5_data;
-        
+
         // Set metadata
         auto now = std::chrono::system_clock::now();
         auto time_t = std::chrono::system_clock::to_time_t(now);
@@ -504,7 +500,7 @@ private:
         ss << std::put_time(std::gmtime(&time_t), "%Y-%m-%dT%H:%M:%SZ");
         hdf5_data.creation_time = ss.str();
         hdf5_data.frame_id = "map";
-        
+
         // Set compression parameters（pattern_bitsはパターンのビット数としてblock_size^3）
         hdf5_data.voxel_size = settings_.voxel_size;
         hdf5_data.dictionary_size = result.num_unique_patterns;
@@ -512,23 +508,23 @@ private:
         hdf5_data.pattern_bits = static_cast<uint32_t>(settings_.block_size) *
                                  static_cast<uint32_t>(settings_.block_size) *
                                  static_cast<uint32_t>(settings_.block_size);
-        
+
         // Grid origin from voxel grid
         {
             float ox = 0.0f, oy = 0.0f, oz = 0.0f;
             result.voxel_grid.getOrigin(ox, oy, oz);
             hdf5_data.grid_origin = {ox, oy, oz};
         }
-        
+
         // Set dictionary data
         hdf5_data.pattern_length = settings_.block_size * settings_.block_size * settings_.block_size;
-        
+
         // Convert pattern dictionary to byte array
         for (const auto& pattern : result.pattern_dictionary) {
-            hdf5_data.dictionary_patterns.insert(hdf5_data.dictionary_patterns.end(), 
+            hdf5_data.dictionary_patterns.insert(hdf5_data.dictionary_patterns.end(),
                                                 pattern.begin(), pattern.end());
         }
-        
+
         // Prepare dense block index grid metadata
         auto grid_dims = result.voxel_grid.getDimensions();
         const int blocks_per_dim_x = (grid_dims.x + settings_.block_size - 1) / settings_.block_size;
@@ -592,7 +588,6 @@ private:
         hdf5_data.original_points = static_cast<uint64_t>(result.original_size / (3 * sizeof(float)));
         hdf5_data.compressed_voxels = result.num_blocks;
         hdf5_data.compression_ratio = result.compression_ratio;
-
         // Calculate bounding box from block grid metadata
         if (total_blocks > 0) {
             const double block_extent = static_cast<double>(settings_.block_size) * settings_.voxel_size;
@@ -620,16 +615,36 @@ private:
                 origin_d[2] + block_extent * static_cast<double>(max_offset[2])
             };
         }
-        
+          
         // Write to HDF5 file
         if (hdf5_io.write(hdf5_output_file_, hdf5_data)) {
-            RCLCPP_INFO(this->get_logger(), "Saved compressed map to HDF5 file: %s", hdf5_output_file_.c_str());
-            
-            // Log file size
+            size_t file_size = 0;
             if (std::filesystem::exists(hdf5_output_file_)) {
-                auto file_size = std::filesystem::file_size(hdf5_output_file_);
-                RCLCPP_INFO(this->get_logger(), "HDF5 file size: %.2f KB", file_size / 1024.0);
+                file_size = std::filesystem::file_size(hdf5_output_file_);
             }
+
+            const auto& offset = hdf5_data.block_offset;
+            const auto& dims_arr = hdf5_data.block_dims;
+            const auto& bbox_min = hdf5_data.bounding_box_min;
+            const auto& bbox_max = hdf5_data.bounding_box_max;
+
+            std::ostringstream summary;
+            summary << "\n[ROS][HDF5 Compressed]\n"
+                    << "  Path            : " << hdf5_output_file_ << '\n'
+                    << "  File size       : " << file_size << " bytes (" << formatKilobytes(file_size) << " KB)" << '\n'
+                    << "  Index bit width : " << static_cast<int>(hdf5_data.block_index_bit_width) << "-bit" << '\n'
+                    << "  Block offset    : " << formatVector3(static_cast<double>(offset[0]),
+                                                                   static_cast<double>(offset[1]),
+                                                                   static_cast<double>(offset[2]), 0) << '\n'
+                    << "  Block dims      : " << formatVector3(static_cast<double>(dims_arr[0]),
+                                                                   static_cast<double>(dims_arr[1]),
+                                                                   static_cast<double>(dims_arr[2]), 0) << '\n'
+                    << "  Bounding box    : min=" << formatVector3(bbox_min[0], bbox_min[1], bbox_min[2])
+                    << ", max=" << formatVector3(bbox_max[0], bbox_max[1], bbox_max[2]) << '\n'
+                    << "  Patterns        : " << result.num_unique_patterns << '\n'
+                    << "  Blocks          : " << result.num_blocks;
+
+            RCLCPP_INFO(this->get_logger(), "%s", summary.str().c_str());
         } else {
             RCLCPP_ERROR(this->get_logger(), "Failed to save HDF5 file: %s", hdf5_io.getLastError().c_str());
         }
@@ -666,16 +681,26 @@ private:
         }
 
         if (hdf5_io.writeRawVoxelGrid(raw_hdf5_output_file_, raw)) {
-            RCLCPP_INFO(this->get_logger(), "Saved raw voxel grid to HDF5 file: %s", raw_hdf5_output_file_.c_str());
+            size_t file_size = 0;
             if (std::filesystem::exists(raw_hdf5_output_file_)) {
-                auto file_size = std::filesystem::file_size(raw_hdf5_output_file_);
-                RCLCPP_INFO(this->get_logger(), "Raw HDF5 file size: %.2f KB", file_size / 1024.0);
+                file_size = std::filesystem::file_size(raw_hdf5_output_file_);
             }
+
+            std::ostringstream summary;
+            summary << "\n[ROS][HDF5 Raw]\n"
+                    << "  Path            : " << raw_hdf5_output_file_ << '\n'
+                    << "  File size       : " << file_size << " bytes (" << formatKilobytes(file_size) << " KB)" << '\n'
+                    << "  Dimensions      : " << raw.dim_x << " x " << raw.dim_y << " x " << raw.dim_z << '\n'
+                    << "  Voxel size      : " << formatFloat(raw.voxel_size, 3) << " m" << '\n'
+                    << "  Origin          : " << formatVector3(raw.origin[0], raw.origin[1], raw.origin[2]) << '\n'
+                    << "  Occupied voxels : " << raw.occupied_voxels.size();
+
+            RCLCPP_INFO(this->get_logger(), "%s", summary.str().c_str());
         } else {
             RCLCPP_ERROR(this->get_logger(), "Failed to save raw HDF5 file: %s", hdf5_io.getLastError().c_str());
         }
     }
-    
+
     void cleanupTempFiles(const std::string& prefix)
     {
         std::vector<std::string> extensions = {"_dict.bin", "_indices.bin", "_meta.bin"};
@@ -687,12 +712,70 @@ private:
         }
     }
 
+    static std::string formatMilliseconds(double value)
+    {
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(3) << value;
+        return ss.str();
+    }
+
+    static std::string formatRatio(double value)
+    {
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(6) << value;
+        return ss.str();
+    }
+
+    static std::string formatKilobytes(size_t bytes)
+    {
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(2) << (static_cast<double>(bytes) / 1024.0);
+        return ss.str();
+    }
+
+    static std::string formatFloat(double value, int precision = 3)
+    {
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(precision) << value;
+        return ss.str();
+    }
+
+    static std::string formatVector3(double x, double y, double z, int precision = 3)
+    {
+        std::ostringstream ss;
+        ss << std::fixed << std::setprecision(precision)
+           << "(" << x << ", " << y << ", " << z << ")";
+        return ss.str();
+    }
+
+    void logCompressionSummary(const pointcloud_compressor::CompressionResult& result)
+    {
+        const bool using_8bit = result.index_bit_size <= 8;
+        std::ostringstream summary;
+        summary << "\n[ROS][Compression Summary]\n"
+                << "  Points            : " << result.point_count << '\n'
+                << "  Blocks            : " << result.num_blocks << " ("
+                << result.blocks_count.x << " x " << result.blocks_count.y << " x "
+                << result.blocks_count.z << ")" << '\n'
+                << "  Timings [ms]      : load=" << formatMilliseconds(result.timings.load_ms)
+                << ", voxel=" << formatMilliseconds(result.timings.voxelize_ms)
+                << ", dict=" << formatMilliseconds(result.timings.dictionary_ms)
+                << ", save=" << formatMilliseconds(result.timings.save_ms)
+                << ", total=" << formatMilliseconds(result.timings.total_ms) << '\n'
+                << "  Patterns          : " << result.num_unique_patterns << " ("
+                << (using_8bit ? "8-bit" : (std::to_string(result.index_bit_size) + "-bit"))
+                << ")" << '\n'
+                << "  Compression ratio : " << formatRatio(result.compression_ratio);
+
+        RCLCPP_INFO(this->get_logger(), "%s", summary.str().c_str());
+    }
+
     // Member variables
     std::unique_ptr<pointcloud_compressor::PointCloudCompressor> compressor_;
     rclcpp::Publisher<pointcloud_compressor::msg::PatternDictionary>::SharedPtr pattern_dict_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
     rclcpp::TimerBase::SharedPtr timer_;
-    
+
     std::string input_file_;
     bool compressed_published_;
     bool publish_occupied_voxel_markers_;

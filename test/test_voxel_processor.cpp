@@ -62,6 +62,29 @@ TEST_F(VoxelProcessorTest, VoxelizePointCloud) {
     EXPECT_EQ(dims.z, 3);  // 3 voxels in z
 }
 
+TEST_F(VoxelProcessorTest, VoxelizePointCloudWithMargin) {
+    VoxelProcessor processor(voxel_size, block_size);
+    processor.setBoundingBoxMarginRatio(0.3f);
+    PointCloud cloud = createSimplePointCloud();
+
+    VoxelGrid grid;
+    bool result = processor.voxelizePointCloud(cloud, grid);
+
+    EXPECT_TRUE(result);
+
+    auto dims = grid.getDimensions();
+    // Original extent was 0.02 -> 3 voxels. With 30% margin each side -> expanded diff 1.6x.
+    EXPECT_EQ(dims.x, 5);
+    EXPECT_EQ(dims.y, 5);
+    EXPECT_EQ(dims.z, 5);
+
+    float ox, oy, oz;
+    grid.getOrigin(ox, oy, oz);
+    EXPECT_NEAR(ox, -0.006f, 1e-6f);
+    EXPECT_NEAR(oy, -0.006f, 1e-6f);
+    EXPECT_NEAR(oz, -0.006f, 1e-6f);
+}
+
 // Test empty point cloud voxelization
 TEST_F(VoxelProcessorTest, VoxelizeEmptyPointCloud) {
     VoxelProcessor processor(voxel_size, block_size);
@@ -169,9 +192,9 @@ TEST_F(VoxelProcessorTest, ReconstructFromVoxelGrid) {
     // Check that reconstructed points are close to voxel centers
     for (const auto& point : reconstructed.points) {
         // Points should be at voxel centers
-        float voxel_x = std::round(point.x / voxel_size) * voxel_size + voxel_size / 2;
-        float voxel_y = std::round(point.y / voxel_size) * voxel_size + voxel_size / 2;
-        float voxel_z = std::round(point.z / voxel_size) * voxel_size + voxel_size / 2;
+        float voxel_x = std::floor(point.x / voxel_size) * voxel_size + voxel_size / 2;
+        float voxel_y = std::floor(point.y / voxel_size) * voxel_size + voxel_size / 2;
+        float voxel_z = std::floor(point.z / voxel_size) * voxel_size + voxel_size / 2;
         
         EXPECT_NEAR(point.x, voxel_x, voxel_size);
         EXPECT_NEAR(point.y, voxel_y, voxel_size);

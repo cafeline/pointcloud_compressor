@@ -690,44 +690,103 @@ bool HDF5IO::readCompressedData(hid_t file_id, CompressedMapData& data) {
         // Compressed data is optional
         return true;
     }
-    
+
     hid_t group_id = H5Gopen2(file_id, "/compressed_data", H5P_DEFAULT);
     if (group_id < 0) {
         return false;
     }
-    
-    // Read voxel indices
-    if (H5Lexists(group_id, "indices", H5P_DEFAULT)) {
-        hid_t dataset = H5Dopen2(group_id, "indices", H5P_DEFAULT);
+
+    if (!H5Lexists(group_id, "block_indices", H5P_DEFAULT)) {
+        last_error_ = "Missing block_indices dataset in /compressed_data";
+        H5Gclose(group_id);
+        return false;
+    }
+
+    {
+        hid_t dataset = H5Dopen2(group_id, "block_indices", H5P_DEFAULT);
+        if (dataset < 0) {
+            last_error_ = "Failed to open block_indices dataset";
+            H5Gclose(group_id);
+            return false;
+        }
+
         hid_t dataspace = H5Dget_space(dataset);
-        
         hsize_t dims[1];
         H5Sget_simple_extent_dims(dataspace, dims, NULL);
-        
-        data.voxel_indices.resize(dims[0]);
-        H5Dread(dataset, H5T_NATIVE_UINT16, H5S_ALL, H5S_ALL, H5P_DEFAULT,
-               data.voxel_indices.data());
-        
+        const size_t total = static_cast<size_t>(dims[0]);
+        data.block_indices.resize(total);
+
+        hid_t dtype = H5Dget_type(dataset);
+        const size_t type_size = H5Tget_size(dtype);
+        bool ok = true;
+        if (type_size == sizeof(uint8_t)) {
+            std::vector<uint8_t> buf(total);
+            ok = H5Dread(dataset, H5T_NATIVE_UINT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf.data()) >= 0;
+            if (ok) {
+                std::transform(buf.begin(), buf.end(), data.block_indices.begin(), [](uint8_t v) {
+                    return static_cast<uint64_t>(v);
+                });
+            }
+        } else if (type_size == sizeof(uint16_t)) {
+            std::vector<uint16_t> buf(total);
+            ok = H5Dread(dataset, H5T_NATIVE_UINT16, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf.data()) >= 0;
+            if (ok) {
+                std::transform(buf.begin(), buf.end(), data.block_indices.begin(), [](uint16_t v) {
+                    return static_cast<uint64_t>(v);
+                });
+            }
+        } else if (type_size == sizeof(uint32_t)) {
+            std::vector<uint32_t> buf(total);
+            ok = H5Dread(dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf.data()) >= 0;
+            if (ok) {
+                std::transform(buf.begin(), buf.end(), data.block_indices.begin(), [](uint32_t v) {
+                    return static_cast<uint64_t>(v);
+                });
+            }
+        } else if (type_size == sizeof(uint64_t)) {
+            ok = H5Dread(dataset, H5T_NATIVE_UINT64, H5S_ALL, H5S_ALL, H5P_DEFAULT, data.block_indices.data()) >= 0;
+        } else {
+            ok = false;
+        }
+
+        H5Tclose(dtype);
         H5Sclose(dataspace);
         H5Dclose(dataset);
+
+        if (!ok) {
+            last_error_ = "Failed to read block_indices dataset";
+            H5Gclose(group_id);
+            return false;
+        }
     }
-    
-    // Read voxel positions
-    if (H5Lexists(group_id, "voxel_positions", H5P_DEFAULT)) {
-        hid_t dataset = H5Dopen2(group_id, "voxel_positions", H5P_DEFAULT);
-        hid_t dataspace = H5Dget_space(dataset);
-        
-        hsize_t dims[2];
-        H5Sget_simple_extent_dims(dataspace, dims, NULL);
-        
-        data.voxel_positions.resize(dims[0]);
-        H5Dread(dataset, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL, H5P_DEFAULT,
-               data.voxel_positions.data());
-        
-        H5Sclose(dataspace);
+
+    if (!H5Lexists(group_id, "block_offset", H5P_DEFAULT) ||
+        !H5Lexists(group_id, "block_dims", H5P_DEFAULT)) {
+        last_error_ = "Missing block_offset or block_dims dataset";
+        H5Gclose(group_id);
+        return false;
+    }
+
+    {
+        hid_t dataset = H5Dopen2(group_id, "block_offset", H5P_DEFAULT);
+        int32_t buffer[3] = {0, 0, 0};
+        H5Dread(dataset, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer);
         H5Dclose(dataset);
+        for (int i = 0; i < 3; ++i) {
+            data.block_offset[i] = buffer[i];
+        }
     }
-    
+
+    {
+        hid_t dataset = H5Dopen2(group_id, "block_dims", H5P_DEFAULT);
+        int32_t buffer[3] = {0, 0, 0};
+        H5Dread(dataset, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer);
+        H5Dclose(dataset);
+        for (int i = 0; i < 3; ++i) {
+            data.block_dims[i] = buffer[i];
+        }
+    }
+
     H5Gclose(group_id);
     return true;
 }
@@ -777,7 +836,7 @@ bool HDF5IO::writeStatistics(hid_t file_id, const CompressedMapData& data) {
     H5Dwrite(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, bbox);
     H5Dclose(dataset);
     H5Sclose(dataspace);
-    
+
     H5Gclose(group_id);
     return true;
 }
@@ -825,7 +884,7 @@ bool HDF5IO::readStatistics(hid_t file_id, CompressedMapData& data) {
         }
         H5Dclose(dataset);
     }
-    
+
     H5Gclose(group_id);
     return true;
 }

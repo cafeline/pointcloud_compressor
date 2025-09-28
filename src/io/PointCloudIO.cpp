@@ -82,19 +82,20 @@ bool PointCloudIO::validateFile(const std::string& filename) {
     if (!std::filesystem::exists(filename)) {
         return false;
     }
-    
+
     if (std::filesystem::is_directory(filename)) {
         return false;
     }
-    
+
     FileFormat format = FileFormatDetector::detectFormat(filename);
     if (format == FileFormat::UNKNOWN) {
         return false;
     }
-    
-    // Try to load to validate content
-    PointCloud temp_cloud;
-    return loadPointCloud(filename, temp_cloud, format);
+
+    // detectFormat() already performs lightweight header validation.
+    // Avoid an additional full file load here to prevent duplicated I/O
+    // (especially costly for large PLY files).
+    return FileFormatDetector::isSupportedFormat(format);
 }
 
 std::vector<std::string> PointCloudIO::getSupportedExtensions() {

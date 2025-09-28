@@ -19,11 +19,13 @@ struct CompressionSettings {
     int index_bit_size = 0;  // 0=auto, 8, 16, 32, 64
     int min_points_threshold = 1;
     std::string temp_directory = "temp";
-    
+    float bounding_box_margin_ratio = 0.2f;
+
     CompressionSettings() = default;
-    CompressionSettings(float vs, int bs, bool use8bit = false, int min_pts = 1) 
+    CompressionSettings(float vs, int bs, bool use8bit = false, int min_pts = 1, float margin_ratio = 0.2f) 
         : voxel_size(vs), block_size(bs), use_8bit_indices(use8bit), 
-          index_bit_size(use8bit ? 8 : 0), min_points_threshold(min_pts) {}
+          index_bit_size(use8bit ? 8 : 0), min_points_threshold(min_pts),
+          bounding_box_margin_ratio(margin_ratio) {}
 };
 
 struct CompressionResult {
@@ -34,6 +36,14 @@ struct CompressionResult {
     size_t num_blocks = 0;
     size_t num_unique_patterns = 0;
     std::string error_message;
+    size_t point_count = 0;
+    struct StageTimings {
+        double load_ms = 0.0;
+        double voxelize_ms = 0.0;
+        double dictionary_ms = 0.0;
+        double save_ms = 0.0;
+        double total_ms = 0.0;
+    } timings;
     
     // Additional data for ROS message generation
     std::vector<uint64_t> block_indices;  // Store as largest type, actual size determined by index_bit_size
@@ -50,6 +60,29 @@ struct CompressionResult {
     struct {
         int x, y, z;
     } blocks_count;
+    struct {
+        double x, y, z;
+    } margin{0.0, 0.0, 0.0};
+    struct {
+        int grid_x = 0;
+        int grid_y = 0;
+        int grid_z = 0;
+        uint64_t total_voxels = 0;
+        int occupied_voxels = 0;
+        int transferred_voxels = 0;
+        int block_count = 0;
+        struct {
+            int x = 0;
+            int y = 0;
+            int z = 0;
+        } blocks_per_axis;
+        double bbox_time_ms = 0.0;
+        double grid_init_time_ms = 0.0;
+        double voxel_count_time_ms = 0.0;
+        double grid_transfer_time_ms = 0.0;
+        double voxelization_time_ms = 0.0;
+        double block_division_time_ms = 0.0;
+    } voxel_stats;
 };
 
 struct BlockSizeOptimizationResult {

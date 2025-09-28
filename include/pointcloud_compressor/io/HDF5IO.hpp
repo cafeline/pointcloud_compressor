@@ -37,10 +37,6 @@ struct CompressedMapData {
     uint64_t block_index_sentinel = std::numeric_limits<uint16_t>::max();
     std::vector<uint64_t> block_indices;  // Flattened block index grid (row-major: x + dim_x*(y + dim_y*z))
 
-    // Legacy compressed data (retained for backward compatibility when reading old files)
-    std::vector<uint16_t> voxel_indices;
-    std::vector<std::array<int32_t, 3>> voxel_positions;
-    
     // Statistics
     uint64_t original_points = 0;
     uint64_t compressed_voxels = 0;

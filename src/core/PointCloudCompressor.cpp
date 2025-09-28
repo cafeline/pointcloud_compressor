@@ -5,12 +5,18 @@
 #include <fstream>
 #include <cmath>
 #include <chrono>
+#include <algorithm>
+#include <sstream>
+#include <iomanip>
 
 namespace pointcloud_compressor {
 
 PointCloudCompressor::PointCloudCompressor(const CompressionSettings& settings)
     : settings_(settings) {
-    voxel_processor_ = std::make_unique<VoxelProcessor>(settings_.voxel_size, settings_.block_size, settings_.min_points_threshold);
+    voxel_processor_ = std::make_unique<VoxelProcessor>(settings_.voxel_size,
+                                                       settings_.block_size,
+                                                       settings_.min_points_threshold,
+                                                       settings_.bounding_box_margin_ratio);
     dictionary_builder_ = std::make_unique<PatternDictionaryBuilder>();
     pattern_encoder_ = std::make_unique<PatternEncoder>();
 }
@@ -29,6 +35,7 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
     
     try {
         auto total_start = std::chrono::high_resolution_clock::now();
+        voxel_processor_->setBoundingBoxMarginRatio(settings_.bounding_box_margin_ratio);
         
         // Step 1: Load point cloud
         auto load_start = std::chrono::high_resolution_clock::now();
@@ -40,9 +47,28 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
         auto load_end = std::chrono::high_resolution_clock::now();
         auto load_time = std::chrono::duration_cast<std::chrono::microseconds>(load_end - load_start).count() / 1000.0;
         
+        result.point_count = cloud.points.size();
         result.original_size = cloud.points.size() * sizeof(Point3D);
-        std::cout << "[PointCloudCompressor] Load point cloud: " << load_time << " ms (" 
-                  << cloud.points.size() << " points)" << std::endl;
+        result.timings.load_ms = load_time;
+
+        Point3D original_min{0.0f, 0.0f, 0.0f};
+        Point3D original_max{0.0f, 0.0f, 0.0f};
+        if (!cloud.points.empty()) {
+            original_min = cloud.points.front();
+            original_max = cloud.points.front();
+            for (const auto& p : cloud.points) {
+                original_min.x = std::min(original_min.x, p.x);
+                original_min.y = std::min(original_min.y, p.y);
+                original_min.z = std::min(original_min.z, p.z);
+                original_max.x = std::max(original_max.x, p.x);
+                original_max.y = std::max(original_max.y, p.y);
+                original_max.z = std::max(original_max.z, p.z);
+            }
+        }
+        const double ratio = static_cast<double>(settings_.bounding_box_margin_ratio);
+        result.margin.x = (static_cast<double>(original_max.x) - static_cast<double>(original_min.x)) * ratio;
+        result.margin.y = (static_cast<double>(original_max.y) - static_cast<double>(original_min.y)) * ratio;
+        result.margin.z = (static_cast<double>(original_max.z) - static_cast<double>(original_min.z)) * ratio;
         
         // Step 2: Voxelize and divide into blocks
         auto voxelize_start = std::chrono::high_resolution_clock::now();
@@ -56,13 +82,29 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
         auto voxelize_time = std::chrono::duration_cast<std::chrono::microseconds>(voxelize_end - voxelize_start).count() / 1000.0;
         
         result.num_blocks = blocks.size();
+        result.timings.voxelize_ms = voxelize_time;
         result.voxel_grid = grid;
         
         // Cache the voxel grid for reuse
         cached_voxel_grid_ = grid;
         
-        std::cout << "[PointCloudCompressor] Voxelize and divide: " << voxelize_time << " ms (" 
-                  << blocks.size() << " blocks)" << std::endl;
+        const auto& voxel_report = voxel_processor_->getLastReport();
+        result.voxel_stats.grid_x = voxel_report.grid_x;
+        result.voxel_stats.grid_y = voxel_report.grid_y;
+        result.voxel_stats.grid_z = voxel_report.grid_z;
+        result.voxel_stats.total_voxels = voxel_report.total_voxels;
+        result.voxel_stats.occupied_voxels = voxel_report.occupied_voxels_estimate;
+        result.voxel_stats.transferred_voxels = voxel_report.occupied_voxels_committed;
+        result.voxel_stats.bbox_time_ms = voxel_report.bbox_time_ms;
+        result.voxel_stats.grid_init_time_ms = voxel_report.grid_init_time_ms;
+        result.voxel_stats.voxel_count_time_ms = voxel_report.voxel_count_time_ms;
+        result.voxel_stats.grid_transfer_time_ms = voxel_report.grid_transfer_time_ms;
+        result.voxel_stats.voxelization_time_ms = voxel_report.voxelization_time_ms;
+        result.voxel_stats.block_count = voxel_report.total_blocks;
+        result.voxel_stats.blocks_per_axis.x = voxel_report.blocks_x;
+        result.voxel_stats.blocks_per_axis.y = voxel_report.blocks_y;
+        result.voxel_stats.blocks_per_axis.z = voxel_report.blocks_z;
+        result.voxel_stats.block_division_time_ms = voxel_report.block_division_time_ms;
         
         // Step 3: Build dictionary and encode
         auto dict_start = std::chrono::high_resolution_clock::now();
@@ -73,14 +115,11 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
         }
         auto dict_end = std::chrono::high_resolution_clock::now();
         auto dict_time = std::chrono::duration_cast<std::chrono::microseconds>(dict_end - dict_start).count() / 1000.0;
+        result.timings.dictionary_ms = dict_time;
         
         result.num_unique_patterns = dictionary_builder_->getUniquePatternCount();
         result.max_index = dictionary_builder_->getMaxIndex();
         result.index_bit_size = dictionary_builder_->getRequiredIndexBitSize();
-        
-        std::cout << "[PointCloudCompressor] Build dictionary: " << dict_time << " ms (" 
-                  << result.num_unique_patterns << " unique patterns, " 
-                  << result.index_bit_size << "-bit indices)" << std::endl;
         
         // Step 4: Save compressed data with actual grid metadata
         auto save_start = std::chrono::high_resolution_clock::now();
@@ -90,7 +129,7 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
         }
         auto save_end = std::chrono::high_resolution_clock::now();
         auto save_time = std::chrono::duration_cast<std::chrono::microseconds>(save_end - save_start).count() / 1000.0;
-        std::cout << "[PointCloudCompressor] Save data: " << save_time << " ms" << std::endl;
+        result.timings.save_ms = save_time;
         
         // Store actual compression data for ROS message
         result.block_indices = indices;
@@ -128,8 +167,54 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
         
         auto total_end = std::chrono::high_resolution_clock::now();
         auto total_time = std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_start).count() / 1000.0;
-        std::cout << "[PointCloudCompressor] Total compression time: " << total_time << " ms" << std::endl;
-        std::cout << "[PointCloudCompressor] Compression ratio: " << result.compression_ratio << std::endl;
+        result.timings.total_ms = total_time;
+
+        auto formatMs = [](double value) {
+            std::ostringstream ss;
+            ss << std::fixed << std::setprecision(3) << value;
+            return ss.str();
+        };
+        auto formatRatio = [](double value) {
+            std::ostringstream ss;
+            ss << std::fixed << std::setprecision(6) << value;
+            return ss.str();
+        };
+
+        std::ostringstream file_report;
+        file_report << "\n[REPORT][File IO]\n"
+                    << "  Input file        : " << input_file << '\n'
+                    << "  Points            : " << result.point_count << '\n'
+                    << "  Load time         : " << formatMs(result.timings.load_ms) << " ms";
+        std::cout << file_report.str() << std::endl;
+
+        std::ostringstream voxel_report_stream;
+        voxel_report_stream << "[REPORT][Voxelization]\n"
+                            << "  Grid dims         : " << result.voxel_stats.grid_x << " x "
+                            << result.voxel_stats.grid_y << " x " << result.voxel_stats.grid_z
+                            << " (" << result.voxel_stats.total_voxels << " voxels)" << '\n'
+                            << "  Bounding box      : " << formatMs(result.voxel_stats.bbox_time_ms) << " ms" << '\n'
+                            << "  Grid init         : " << formatMs(result.voxel_stats.grid_init_time_ms) << " ms" << '\n'
+                            << "  Voxel counting    : " << formatMs(result.voxel_stats.voxel_count_time_ms) << " ms ("
+                            << result.voxel_stats.occupied_voxels << " candidate voxels)" << '\n'
+                            << "  Grid transfer     : " << formatMs(result.voxel_stats.grid_transfer_time_ms) << " ms ("
+                            << result.voxel_stats.transferred_voxels << " voxels set)" << '\n'
+                            << "  Block division    : " << formatMs(result.voxel_stats.block_division_time_ms) << " ms -> "
+                            << result.voxel_stats.blocks_per_axis.x << " x "
+                            << result.voxel_stats.blocks_per_axis.y << " x "
+                            << result.voxel_stats.blocks_per_axis.z << " = "
+                            << result.voxel_stats.block_count << " blocks" << '\n'
+                            << "  Voxelize total    : " << formatMs(result.voxel_stats.voxelization_time_ms) << " ms";
+        std::cout << voxel_report_stream.str() << std::endl;
+
+        std::ostringstream compression_report;
+        compression_report << "[REPORT][Compression]\n"
+                            << "  Dictionary build  : " << formatMs(result.timings.dictionary_ms) << " ms ("
+                            << result.num_unique_patterns << " patterns)" << '\n'
+                            << "  Index bit width   : " << result.index_bit_size << "-bit" << '\n'
+                            << "  Save data         : " << formatMs(result.timings.save_ms) << " ms" << '\n'
+                            << "  Total time        : " << formatMs(result.timings.total_ms) << " ms" << '\n'
+                            << "  Compression ratio : " << formatRatio(result.compression_ratio);
+        std::cout << compression_report.str() << std::endl;
         
     } catch (const std::exception& e) {
         result.error_message = "Exception during compression: " + std::string(e.what());
@@ -448,6 +533,7 @@ void PointCloudCompressor::updateSettings(const CompressionSettings& settings) {
     settings_ = settings;
     voxel_processor_->setVoxelSize(settings_.voxel_size);
     voxel_processor_->setBlockSize(settings_.block_size);
+    voxel_processor_->setBoundingBoxMarginRatio(settings_.bounding_box_margin_ratio);
 }
 
 CompressionSettings PointCloudCompressor::getSettings() const {

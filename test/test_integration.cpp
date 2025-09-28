@@ -82,6 +82,14 @@ TEST_F(IntegrationTest, CompressAndDecompress) {
     // 現実装では成功することを期待
     EXPECT_TRUE(compression_result.success);
     EXPECT_TRUE(compression_result.error_message.empty());
+
+    EXPECT_NEAR(compression_result.margin.x, 0.006, 1e-6);
+    EXPECT_NEAR(compression_result.margin.y, 0.006, 1e-6);
+    EXPECT_NEAR(compression_result.margin.z, 0.006, 1e-6);
+
+    EXPECT_NEAR(compression_result.grid_origin.x, -0.006, 1e-6);
+    EXPECT_NEAR(compression_result.grid_origin.y, -0.006, 1e-6);
+    EXPECT_NEAR(compression_result.grid_origin.z, -0.006, 1e-6);
 }
 
 // Test compression ratio calculation

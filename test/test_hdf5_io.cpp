@@ -15,6 +15,7 @@
 #include <cstdint>
 
 #include <hdf5.h>
+#include <hdf5_hl.h>
 
 using namespace pointcloud_compressor;
 
@@ -213,6 +214,7 @@ TEST_F(HDF5IOTest, WriteCreatesBlockIndexDatasets) {
 
     auto bit_width = readUint32Scalar("/compression_params/block_index_bit_width");
     EXPECT_EQ(bit_width, static_cast<uint32_t>(test_data_.block_index_bit_width));
+
 }
 
 TEST_F(HDF5IOTest, LegacyDatasetsAreNotWritten) {
@@ -221,6 +223,51 @@ TEST_F(HDF5IOTest, LegacyDatasetsAreNotWritten) {
 
     EXPECT_FALSE(legacyDatasetExists("indices"));
     EXPECT_FALSE(legacyDatasetExists("voxel_positions"));
+}
+
+TEST_F(HDF5IOTest, ReadFailsWithoutBlockIndices) {
+    const std::string legacy_file = test_file_ + "_legacy";
+    hid_t file = H5Fcreate(legacy_file.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+    ASSERT_GE(file, 0);
+
+    hid_t params = H5Gcreate2(file, "/compression_params", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    ASSERT_GE(params, 0);
+    uint32_t block_size = 8;
+    float voxel_size = 0.5f;
+    float origin[3] = {0.0f, 0.0f, 0.0f};
+    const hsize_t scalar_dim[1] = {1};
+    const hsize_t origin_dim[1] = {3};
+    H5LTmake_dataset(params, "block_size", 1, scalar_dim, H5T_NATIVE_UINT32, &block_size);
+    H5LTmake_dataset(params, "voxel_size", 1, scalar_dim, H5T_NATIVE_FLOAT, &voxel_size);
+    H5LTmake_dataset(params, "grid_origin", 1, origin_dim, H5T_NATIVE_FLOAT, origin);
+    H5Gclose(params);
+
+    hid_t dict = H5Gcreate2(file, "/dictionary", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    ASSERT_GE(dict, 0);
+    uint32_t pattern_length = 512;
+    std::vector<uint8_t> pattern(64, 0xFF);
+    H5LTmake_dataset(dict, "pattern_length", 1, scalar_dim, H5T_NATIVE_UINT32, &pattern_length);
+    const hsize_t pattern_dims[1] = {static_cast<hsize_t>(pattern.size())};
+    H5LTmake_dataset(dict, "patterns", 1, pattern_dims, H5T_NATIVE_UINT8, pattern.data());
+    H5Gclose(dict);
+
+    hid_t comp = H5Gcreate2(file, "/compressed_data", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    ASSERT_GE(comp, 0);
+    uint16_t idx = 0;
+    int32_t pos[3] = {0, 0, 0};
+    H5LTmake_dataset(comp, "indices", 1, scalar_dim, H5T_NATIVE_UINT16, &idx);
+    const hsize_t voxel_pos_dims[2] = {1, 3};
+    H5LTmake_dataset(comp, "voxel_positions", 2, voxel_pos_dims, H5T_NATIVE_INT32, pos);
+    H5Gclose(comp);
+
+    H5Fclose(file);
+
+    HDF5IO io;
+    CompressedMapData data;
+    EXPECT_FALSE(io.read(legacy_file, data));
+    EXPECT_FALSE(io.getLastError().empty());
+
+    std::filesystem::remove(legacy_file);
 }
 
 TEST_F(HDF5IOTest, IsValidHDF5) {

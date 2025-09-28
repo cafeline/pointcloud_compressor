@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <cstdint>
 #include "pointcloud_compressor/io/PcdIO.hpp"
 #include "pointcloud_compressor/model/VoxelGrid.hpp"
 
@@ -13,10 +14,30 @@ namespace pointcloud_compressor {
 class VoxelGrid;
 class VoxelBlock;
 
+struct VoxelizationReport {
+    int grid_x = 0;
+    int grid_y = 0;
+    int grid_z = 0;
+    uint64_t total_voxels = 0;
+    int occupied_voxels_estimate = 0;
+    int occupied_voxels_committed = 0;
+    double bbox_time_ms = 0.0;
+    double grid_init_time_ms = 0.0;
+    double voxel_count_time_ms = 0.0;
+    double grid_transfer_time_ms = 0.0;
+    double voxelization_time_ms = 0.0;
+    int blocks_x = 0;
+    int blocks_y = 0;
+    int blocks_z = 0;
+    int total_blocks = 0;
+    double block_division_time_ms = 0.0;
+};
+
 class VoxelProcessor {
 public:
     // Constructor
-    VoxelProcessor(float voxel_size = 0.01f, int block_size = 8, int min_points_threshold = 1);
+    VoxelProcessor(float voxel_size = 0.01f, int block_size = 8, int min_points_threshold = 1,
+                   float bounding_box_margin_ratio = 0.0f);
     
     // Destructor
     ~VoxelProcessor();
@@ -64,12 +85,18 @@ public:
     
     int getMinPointsThreshold() const { return min_points_threshold_; }
     void setMinPointsThreshold(int threshold) { min_points_threshold_ = std::max(1, threshold); }
-    
+    void setBoundingBoxMarginRatio(float ratio) { bounding_box_margin_ratio_ = std::max(0.0f, ratio); }
+    float getBoundingBoxMarginRatio() const { return bounding_box_margin_ratio_; }
+
+    const VoxelizationReport& getLastReport() const { return last_report_; }
+
 private:
     float voxel_size_;  // Size of each voxel
     int block_size_;    // Size of each block (e.g., 8x8x8)
     int min_points_threshold_;  // Minimum points per voxel to mark as occupied
-    
+    float bounding_box_margin_ratio_;
+    VoxelizationReport last_report_{};
+
     // Helper functions
     void computeBoundingBox(const PointCloud& cloud, 
                           Point3D& min_pt, Point3D& max_pt);

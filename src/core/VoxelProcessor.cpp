@@ -13,9 +13,11 @@
 
 namespace pointcloud_compressor {
 
-VoxelProcessor::VoxelProcessor(float voxel_size, int block_size, int min_points_threshold)
+VoxelProcessor::VoxelProcessor(float voxel_size, int block_size, int min_points_threshold,
+                               float bounding_box_margin_ratio)
     : voxel_size_(voxel_size), block_size_(block_size), 
-      min_points_threshold_(std::max(1, min_points_threshold)) {}
+      min_points_threshold_(std::max(1, min_points_threshold)),
+      bounding_box_margin_ratio_(std::max(0.0f, bounding_box_margin_ratio)) {}
 
 VoxelProcessor::~VoxelProcessor() {}
 
@@ -24,14 +26,31 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
         return false;
     }
     
+    last_report_ = VoxelizationReport{};
+
     auto total_start = std::chrono::high_resolution_clock::now();
     
     // Compute bounding box
     auto bbox_start = std::chrono::high_resolution_clock::now();
     Point3D min_pt, max_pt;
     computeBoundingBox(cloud, min_pt, max_pt);
+    if (bounding_box_margin_ratio_ > 0.0f) {
+        const auto expand_axis = [&](float& min_val, float& max_val) {
+            float range = max_val - min_val;
+            if (range < std::numeric_limits<float>::epsilon()) {
+                range = 0.0f;
+            }
+            const float margin = range * bounding_box_margin_ratio_;
+            min_val -= margin;
+            max_val += margin;
+        };
+        expand_axis(min_pt.x, max_pt.x);
+        expand_axis(min_pt.y, max_pt.y);
+        expand_axis(min_pt.z, max_pt.z);
+    }
     auto bbox_end = std::chrono::high_resolution_clock::now();
     auto bbox_time = std::chrono::duration_cast<std::chrono::microseconds>(bbox_end - bbox_start).count() / 1000.0;
+    last_report_.bbox_time_ms = bbox_time;
     
     // Calculate grid dimensions
     int grid_x = static_cast<int>(std::ceil((max_pt.x - min_pt.x) / voxel_size_)) + 1;
@@ -40,10 +59,10 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     
     // Calculate total voxels once
     uint64_t total_voxels = static_cast<uint64_t>(grid_x) * grid_y * grid_z;
-    
-    std::cout << "[VoxelProcessor] Grid dimensions: " << grid_x << "x" << grid_y << "x" << grid_z 
-              << " (" << total_voxels << " voxels)" << std::endl;
-    std::cout << "[VoxelProcessor] Bounding box calculation: " << bbox_time << " ms" << std::endl;
+    last_report_.grid_x = grid_x;
+    last_report_.grid_y = grid_y;
+    last_report_.grid_z = grid_z;
+    last_report_.total_voxels = total_voxels;
     
     // Initialize grid
     auto grid_init_start = std::chrono::high_resolution_clock::now();
@@ -51,7 +70,7 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     grid.setOrigin(min_pt.x, min_pt.y, min_pt.z);
     auto grid_init_end = std::chrono::high_resolution_clock::now();
     auto grid_init_time = std::chrono::duration_cast<std::chrono::microseconds>(grid_init_end - grid_init_start).count() / 1000.0;
-    std::cout << "[VoxelProcessor] Grid initialization: " << grid_init_time << " ms" << std::endl;
+    last_report_.grid_init_time_ms = grid_init_time;
     
     int occupied_count = 0;
     
@@ -81,8 +100,8 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     
     auto voxel_count_end = std::chrono::high_resolution_clock::now();
     auto voxel_count_time = std::chrono::duration_cast<std::chrono::microseconds>(voxel_count_end - voxel_count_start).count() / 1000.0;
-    std::cout << "[VoxelProcessor] Voxel counting: " << voxel_count_time << " ms (" 
-              << voxel_count_map.size() << " occupied voxels)" << std::endl;
+    last_report_.voxel_count_time_ms = voxel_count_time;
+    last_report_.occupied_voxels_estimate = static_cast<int>(voxel_count_map.size());
     
     // Phase 2: Transfer to VoxelGrid (optimized for sparse grids)
     auto transfer_start = std::chrono::high_resolution_clock::now();
@@ -104,12 +123,12 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     
     auto transfer_end = std::chrono::high_resolution_clock::now();
     auto transfer_time = std::chrono::duration_cast<std::chrono::microseconds>(transfer_end - transfer_start).count() / 1000.0;
-    std::cout << "[VoxelProcessor] Grid transfer: " << transfer_time << " ms (" 
-              << occupied_count << " voxels set)" << std::endl;
+    last_report_.grid_transfer_time_ms = transfer_time;
+    last_report_.occupied_voxels_committed = occupied_count;
     
     auto total_end = std::chrono::high_resolution_clock::now();
     auto total_time = std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_start).count() / 1000.0;
-    std::cout << "[VoxelProcessor] Total voxelization time: " << total_time << " ms" << std::endl;
+    last_report_.voxelization_time_ms = total_time;
     
     return true;
 }
@@ -128,9 +147,10 @@ bool VoxelProcessor::divideIntoBlocks(const VoxelGrid& grid, std::vector<VoxelBl
     
     int total_blocks = x_blocks * y_blocks * z_blocks;
     blocks.reserve(total_blocks);
-    
-    std::cout << "[VoxelProcessor] Dividing into " << x_blocks << "x" << y_blocks << "x" << z_blocks 
-              << " = " << total_blocks << " blocks" << std::endl;
+    last_report_.blocks_x = x_blocks;
+    last_report_.blocks_y = y_blocks;
+    last_report_.blocks_z = z_blocks;
+    last_report_.total_blocks = total_blocks;
     
 #ifdef USE_OPENMP
     // Pre-allocate all blocks
@@ -159,7 +179,7 @@ bool VoxelProcessor::divideIntoBlocks(const VoxelGrid& grid, std::vector<VoxelBl
     
     auto end = std::chrono::high_resolution_clock::now();
     auto time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
-    std::cout << "[VoxelProcessor] Block division time: " << time << " ms" << std::endl;
+    last_report_.block_division_time_ms = time;
     
     return !blocks.empty();
 }
@@ -214,9 +234,9 @@ float VoxelProcessor::findOptimalVoxelSize(const PointCloud& cloud,
     
     // Try different voxel sizes
     for (float size = min_size; size <= max_size; size += step) {
-        VoxelProcessor temp_processor(size, block_size_, min_points_threshold_);
+        VoxelProcessor temp_processor(size, block_size_, min_points_threshold_, bounding_box_margin_ratio_);
         VoxelGrid temp_grid;
-        
+
         if (temp_processor.voxelizePointCloud(cloud, temp_grid)) {
             // Score based on occupancy ratio and compression potential
             float occupancy = temp_grid.getOccupancyRatio();
