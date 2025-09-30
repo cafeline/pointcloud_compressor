@@ -19,11 +19,11 @@ struct CompressionSettings {
     int index_bit_size = 0;  // 0=auto, 8, 16, 32, 64
     int min_points_threshold = 1;
     std::string temp_directory = "temp";
-    float bounding_box_margin_ratio = 0.2f;
+    float bounding_box_margin_ratio = 0.0f;
 
     CompressionSettings() = default;
-    CompressionSettings(float vs, int bs, bool use8bit = false, int min_pts = 1, float margin_ratio = 0.2f) 
-        : voxel_size(vs), block_size(bs), use_8bit_indices(use8bit), 
+    CompressionSettings(float vs, int bs, bool use8bit = false, int min_pts = 1, float margin_ratio = 0.2f)
+        : voxel_size(vs), block_size(bs), use_8bit_indices(use8bit),
           index_bit_size(use8bit ? 8 : 0), min_points_threshold(min_pts),
           bounding_box_margin_ratio(margin_ratio) {}
 };
@@ -44,7 +44,7 @@ struct CompressionResult {
         double save_ms = 0.0;
         double total_ms = 0.0;
     } timings;
-    
+
     // Additional data for ROS message generation
     std::vector<uint64_t> block_indices;  // Store as largest type, actual size determined by index_bit_size
     VoxelGrid voxel_grid;
@@ -96,27 +96,27 @@ class PointCloudCompressor {
 public:
     // Constructor
     PointCloudCompressor(const CompressionSettings& settings = CompressionSettings());
-    
+
     // Destructor
     ~PointCloudCompressor();
-    
+
     // Main compression function
-    CompressionResult compress(const std::string& input_file, 
+    CompressionResult compress(const std::string& input_file,
                               const std::string& output_prefix);
-    
+
     // Main decompression function
-    bool decompress(const std::string& compressed_prefix, 
+    bool decompress(const std::string& compressed_prefix,
                    const std::string& output_file);
-    
+
     // Decompress to VoxelGrid (preserves exact grid structure)
     bool decompressToGrid(const std::string& compressed_prefix,
                          VoxelGrid& grid);
-    
+
     // Find optimal compression settings
     CompressionSettings findOptimalSettings(const std::string& input_file,
                                            float min_voxel_size = 0.005f,
                                            float max_voxel_size = 0.05f);
-    
+
     // Find optimal block size
     BlockSizeOptimizationResult findOptimalBlockSize(
         const std::string& input_file,
@@ -124,33 +124,33 @@ public:
         int max_block_size = 32,
         int step_size = 1,
         bool verbose = false);
-    
+
     // Update settings
     void updateSettings(const CompressionSettings& settings);
     CompressionSettings getSettings() const;
-    
+
     // Utility functions
     bool validateInputFile(const std::string& filename);
     size_t estimateMemoryUsage(const std::string& input_file);
-    
+
     // Voxel grid caching
     std::optional<VoxelGrid> getCachedVoxelGrid() const;
     void clearCachedVoxelGrid();
-    
+
 private:
     CompressionSettings settings_;
     std::unique_ptr<VoxelProcessor> voxel_processor_;
     std::unique_ptr<PatternDictionaryBuilder> dictionary_builder_;
     std::unique_ptr<PatternEncoder> pattern_encoder_;
-    
+
     // Cached voxel grid for reuse
     mutable std::optional<VoxelGrid> cached_voxel_grid_;
-    
+
     // Internal compression steps
     bool loadPointCloud(const std::string& filename, PointCloud& cloud);
     bool voxelizeAndDivide(const PointCloud& cloud, std::vector<VoxelBlock>& blocks);
-    bool voxelizeAndDivideWithGrid(const PointCloud& cloud, 
-                                   std::vector<VoxelBlock>& blocks, 
+    bool voxelizeAndDivideWithGrid(const PointCloud& cloud,
+                                   std::vector<VoxelBlock>& blocks,
                                    VoxelGrid& grid);
     bool buildDictionaryAndEncode(const std::vector<VoxelBlock>& blocks,
                                  std::vector<uint64_t>& indices);
@@ -158,7 +158,7 @@ private:
                            const std::vector<uint64_t>& indices,
                            const VoxelGrid& grid,
                            int index_bit_size = 16);
-    
+
     // Internal decompression steps
     bool loadCompressionData(const std::string& compressed_prefix,
                            std::vector<uint64_t>& indices,
@@ -169,11 +169,11 @@ private:
     bool reconstructVoxelGrid(const std::vector<uint64_t>& indices,
                             const VoxelGrid& metadata_grid,
                             VoxelGrid& reconstructed_grid);
-    
+
     // File management
     void initializeTempPaths(const std::string& output_prefix);
     void cleanupTempFiles();
-    
+
     std::string getBlocksFilename(const std::string& prefix) const;
     std::string getDictionaryFilename(const std::string& prefix) const;
     std::string getIndicesFilename(const std::string& prefix) const;
