@@ -1,0 +1,79 @@
+# PointCloud Compressor Node Parameters
+
+# ROS2 Node namespace
+pointcloud_compressor_node:
+  ros__parameters:
+    # Input PCD file path (must be specified when launching)
+    input_pcd_file: ""
+    
+    # Compression settings
+    compression:
+      # Voxel size for voxelization (meters)
+      voxel_size: 0.01
+      
+      # Block size for pattern extraction (cubic blocks)
+      block_size: 8
+      
+      # Use 8-bit indices if possible (saves space)
+      use_8bit_indices: true
+      
+      # Temporary directory for intermediate files
+      temp_directory: "/tmp/pointcloud_compressor"
+    
+    # Publishing settings
+    publishing:
+      # Publish compressed data only once (true) or periodically (false)
+      publish_once: true
+      
+      # Publishing interval in milliseconds (only used if publish_once is false)
+      publish_interval_ms: 5000
+      
+      # ROS topic name for compressed point cloud
+      output_topic: "compressed_pointcloud"
+      
+      # Queue size for publisher
+      queue_size: 10
+    
+    # Performance settings
+    performance:
+      # Maximum memory usage in MB (0 = unlimited)
+      max_memory_mb: 1000
+      
+      # Number of parallel threads for processing (0 = auto)
+      num_threads: 0
+      
+      # Enable performance profiling
+      enable_profiling: false
+    
+    # Quality settings
+    quality:
+      # Target compression ratio (0.0 = maximum compression, 1.0 = no compression)
+      target_compression_ratio: 0.3
+      
+      # Maximum acceptable reconstruction error
+      max_reconstruction_error: 0.001
+      
+      # Enable quality validation
+      validate_reconstruction: false
+    
+    # HDF5 output settings
+    hdf5:
+      # Enable saving compressed data to HDF5 file
+      save_hdf5: true
+      
+      # Output HDF5 file path
+      hdf5_output_file: "/tmp/compressed_map.h5"
+    
+    # Logging settings
+    logging:
+      # Log level: DEBUG, INFO, WARN, ERROR
+      log_level: "INFO"
+      
+      # Save compression statistics to file
+      save_statistics: true
+      
+      # Statistics output directory
+      statistics_dir: "/tmp/pointcloud_compressor/stats"
+      
+      # Enable detailed timing logs
+      enable_timing_logs: false

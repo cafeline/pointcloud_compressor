@@ -1,0 +1,25 @@
+block_size_optimizer:
+  ros__parameters:
+    # Input file path (required)
+    # input_file: "/home/ryo/tsudanuma/maps/tsudanuma-challenge-all.ply"
+    input_file: "/home/ryo/tukuba/tsukuba_all_241006_add-imu-conf.pcd"
+    voxel_size: 0.1
+
+    # Block size optimization range
+    min_block_size: 10
+    max_block_size: 11
+    step_size: 1
+
+
+    # Enable verbose output
+    verbose: true
+
+    # Automatically compress with optimal settings after optimization
+    auto_compress: false
+
+    # Output prefix for compressed files (if auto_compress is true)
+    # If empty, uses input filename + "_optimized"
+    output_prefix: ""
+
+    # Run optimization once and shutdown (true) or wait for service calls (false)
+    run_once: true
