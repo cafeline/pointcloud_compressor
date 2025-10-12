@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <limits>
 #include <sstream>
+#include <cstdint>
 
 #include "pointcloud_compressor/msg/pattern_dictionary.hpp"
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
@@ -588,10 +589,16 @@ private:
         // Collect occupied voxel indices
         int estimated = result.voxel_grid.getOccupiedVoxelCount();
         if (estimated > 0) raw.occupied_voxels.reserve(static_cast<size_t>(estimated));
+        raw.voxel_values.reserve(static_cast<size_t>(raw.dim_x) *
+                                 static_cast<size_t>(raw.dim_y) *
+                                 static_cast<size_t>(raw.dim_z));
         for (int z = 0; z < dims.z; ++z) {
             for (int y = 0; y < dims.y; ++y) {
                 for (int x = 0; x < dims.x; ++x) {
-                    if (result.voxel_grid.getVoxel(x, y, z)) {
+                    const bool occupied = result.voxel_grid.getVoxel(x, y, z);
+                    const uint8_t value = occupied ? 255U : 0U;
+                    raw.voxel_values.push_back(value);
+                    if (occupied) {
                         raw.occupied_voxels.push_back({x, y, z});
                     }
                 }

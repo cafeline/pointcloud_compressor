@@ -98,6 +98,22 @@ bool HDF5IO::writeRawVoxelGrid(const std::string& filename, const RawVoxelGridDa
         return false;
     }
 
+    const size_t total_voxels = static_cast<size_t>(data.dim_x) *
+                                static_cast<size_t>(data.dim_y) *
+                                static_cast<size_t>(data.dim_z);
+    if (total_voxels == 0) {
+        last_error_ = "Raw voxel grid dimensions must be non-zero";
+        return false;
+    }
+
+    if (data.voxel_values.size() != total_voxels) {
+        std::ostringstream oss;
+        oss << "voxel_values size (" << data.voxel_values.size()
+            << ") does not match grid dimensions product (" << total_voxels << ")";
+        last_error_ = oss.str();
+        return false;
+    }
+
     // Create HDF5 file
     hid_t file_id = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
     if (file_id < 0) {
@@ -159,6 +175,32 @@ bool HDF5IO::writeRawVoxelGrid(const std::string& filename, const RawVoxelGridDa
                 H5Dclose(ds);
             } else ok = false;
             H5Sclose(space);
+        }
+        // voxel_values (dim_z x dim_y x dim_x, uint8 occupancy)
+        if (ok) {
+            hsize_t dims3[3] = {
+                static_cast<hsize_t>(data.dim_z),
+                static_cast<hsize_t>(data.dim_y),
+                static_cast<hsize_t>(data.dim_x)
+            };
+            hid_t space = H5Screate_simple(3, dims3, NULL);
+            if (space >= 0) {
+                hid_t ds = H5Dcreate2(group_id, "voxel_values", H5T_NATIVE_UINT8, space,
+                                      H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+                if (ds >= 0) {
+                    if (!data.voxel_values.empty()) {
+                        H5Dwrite(ds, H5T_NATIVE_UINT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, data.voxel_values.data());
+                    }
+                    H5Dclose(ds);
+                } else {
+                    ok = false;
+                    last_error_ = "Failed to create dataset: /raw_voxel_grid/voxel_values";
+                }
+                H5Sclose(space);
+            } else {
+                ok = false;
+                last_error_ = "Failed to allocate dataspace for voxel_values";
+            }
         }
         H5Gclose(group_id);
     }

@@ -225,6 +225,53 @@ TEST_F(HDF5IOTest, WriteCreatesBlockIndexDatasets) {
 
 }
 
+TEST_F(HDF5IOTest, RawVoxelGridStoresVoxelsWithFreeSpace) {
+    HDF5IO io;
+    HDF5IO::RawVoxelGridData raw;
+
+    raw.dim_x = 2;
+    raw.dim_y = 2;
+    raw.dim_z = 1;
+    raw.voxel_size = 0.25f;
+    raw.origin = {1.0f, -2.0f, 0.5f};
+    raw.voxel_values = {0U, 255U, 0U, 255U};
+    raw.occupied_voxels = {
+        {1, 0, 0},
+        {1, 1, 0},
+    };
+
+    ASSERT_TRUE(io.writeRawVoxelGrid(test_file_, raw)) << io.getLastError();
+
+    hid_t file_id = H5Fopen(test_file_.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+    ASSERT_GE(file_id, 0);
+
+    hid_t dataset = H5Dopen2(file_id, "/raw_voxel_grid/voxel_values", H5P_DEFAULT);
+    ASSERT_GE(dataset, 0);
+
+    hid_t dataspace = H5Dget_space(dataset);
+    ASSERT_GE(dataspace, 0);
+
+    const int ndims = H5Sget_simple_extent_ndims(dataspace);
+    EXPECT_EQ(ndims, 3);
+
+    hsize_t dims[3] = {0, 0, 0};
+    H5Sget_simple_extent_dims(dataspace, dims, nullptr);
+    EXPECT_EQ(dims[0], static_cast<hsize_t>(raw.dim_z));
+    EXPECT_EQ(dims[1], static_cast<hsize_t>(raw.dim_y));
+    EXPECT_EQ(dims[2], static_cast<hsize_t>(raw.dim_x));
+
+    std::vector<uint8_t> values(static_cast<size_t>(raw.dim_x) *
+                                static_cast<size_t>(raw.dim_y) *
+                                static_cast<size_t>(raw.dim_z),
+                                0U);
+    H5Dread(dataset, H5T_NATIVE_UINT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, values.data());
+    EXPECT_EQ(values, raw.voxel_values);
+
+    H5Sclose(dataspace);
+    H5Dclose(dataset);
+    H5Fclose(file_id);
+}
+
 TEST_F(HDF5IOTest, LegacyDatasetsAreNotWritten) {
     HDF5IO io;
     ASSERT_TRUE(io.write(test_file_, test_data_)) << io.getLastError();
