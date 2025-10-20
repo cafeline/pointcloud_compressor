@@ -2,6 +2,8 @@
 #include <iostream>
 #include <string>
 
+namespace {
+
 void printUsage(const char* program_name) {
     std::cout << "Usage: " << program_name << " <command> [options]\n";
     std::cout << "\nCommands:\n";
@@ -18,6 +20,8 @@ void printUsage(const char* program_name) {
     std::cout << "  " << program_name << " decompress output input_restored.pcd\n";
     std::cout << "  " << program_name << " optimize input.pcd\n";
 }
+
+}  // namespace
 
 int main(int argc, char** argv) {
     if (argc < 2) {
@@ -38,7 +42,6 @@ int main(int argc, char** argv) {
             std::string input_file = argv[2];
             std::string output_prefix = argv[3];
 
-            // Parse additional options
             pointcloud_compressor::CompressionSettings settings;
             for (int i = 4; i < argc; ++i) {
                 std::string arg = argv[i];
@@ -51,7 +54,6 @@ int main(int argc, char** argv) {
                 }
             }
 
-            // Perform compression
             pointcloud_compressor::PointCloudCompressor compressor(settings);
             auto result = compressor.compress(input_file, output_prefix);
 

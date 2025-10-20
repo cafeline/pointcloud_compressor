@@ -59,6 +59,16 @@ target_include_directories(${PROJECT_NAME}_core PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_compile_features(${PROJECT_NAME}_core PUBLIC cxx_std_17)
 
+# Runtime integration library
+add_library(${PROJECT_NAME}_runtime
+  src/ros/runtime/pointcloud_compressor.cpp
+)
+target_link_libraries(${PROJECT_NAME}_runtime PUBLIC ${PROJECT_NAME}_core)
+target_include_directories(${PROJECT_NAME}_runtime PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(${PROJECT_NAME}_runtime PUBLIC cxx_std_17)
+
 # Add OpenMP support if available
 if(OpenMP_CXX_FOUND)
   target_link_libraries(${PROJECT_NAME}_core PUBLIC OpenMP::OpenMP_CXX)
@@ -69,12 +79,12 @@ endif()
 target_link_libraries(${PROJECT_NAME}_core PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_HL_LIBRARIES})
 
 # Main executable
-add_executable(${PROJECT_NAME}_cli src/pointcloud_compressor.cpp)
+add_executable(${PROJECT_NAME}_cli src/apps/cli_main.cpp)
 target_link_libraries(${PROJECT_NAME}_cli ${PROJECT_NAME}_core)
 
 # ROS2 Node executable
 add_executable(${PROJECT_NAME}_node src/ros/pointcloud_compressor_node.cpp)
-target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME}_core)
+target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME}_runtime)
 ament_target_dependencies(${PROJECT_NAME}_node
   rclcpp
   std_msgs
@@ -101,6 +111,8 @@ ament_target_dependencies(block_size_optimizer_node
 
 # Installation
 install(TARGETS ${PROJECT_NAME}_core
+  DESTINATION lib)
+install(TARGETS ${PROJECT_NAME}_runtime
   DESTINATION lib)
 install(TARGETS ${PROJECT_NAME}_cli ${PROJECT_NAME}_node block_size_optimizer_node
   DESTINATION lib/${PROJECT_NAME})
@@ -217,6 +229,11 @@ if(BUILD_TESTING)
   # HDF5 I/O Test
   ament_add_gtest(test_hdf5_io test/test_hdf5_io.cpp)
   target_link_libraries(test_hdf5_io ${PROJECT_NAME}_core)
+
+  # Runtime API Test
+  ament_add_gtest(test_runtime_api test/test_runtime_api.cpp)
+  target_link_libraries(test_runtime_api ${PROJECT_NAME}_runtime)
+  target_compile_definitions(test_runtime_api PRIVATE TEST_DATA_DIR="${TEST_DATA_DIR}")
 endif()
 
 # Export dependencies
