@@ -8,7 +8,9 @@
 
 ## Quick start
 
-### Install & Build
+### Installation & Usage
+
+#### ROS2
 ```bash
 mkdir -p ros2_ws && cd ros2_ws
 git clone <repository-url> src/pointcloud_compressor
@@ -16,26 +18,21 @@ rosdep update
 rosdep install -y --from-paths src --ignore-src --rosdistro $ROS_DISTRO
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 source install/setup.bash
+ros2 launch pointcloud_compressor pointcloud_compressor.launch.py
 ```
 
-### CLI usage (runs without ROS 2)
+#### CLI
 ```bash
-# Compress
-install/pointcloud_compressor/lib/pointcloud_compressor/pointcloud_compressor_cli \
-  compress input.pcd output_prefix --voxel-size 0.01 --block-size 8
-
-# Decompress
-install/pointcloud_compressor/lib/pointcloud_compressor/pointcloud_compressor_cli \
-  decompress output_prefix restored.pcd
-
-# Search optimal settings
-install/pointcloud_compressor/lib/pointcloud_compressor/pointcloud_compressor_cli \
-  optimize input.pcd
+git clone <repository-url>
+cd pointcloud_compressor
+cmake -S . -B build -DBUILD_TESTING=OFF
+cmake --build build --target pointcloud_compressor_cli
+./build/pointcloud_compressor_cli compress input.pcd output.h5 --voxel-size 0.01 --block-size 8
 ```
 
 ## Compression artifacts and file formats
 
-The CLI and ROS 2 node writes a HDF5 archive. 
+The CLI and ROS 2 node writes a HDF5 archive.
 
 | File | Groups / datasets (selected) | Notes |
 | :--- | :--------------------------- | :---- |
