@@ -854,6 +854,86 @@ bool PointCloudCompressor::reconstructPointCloud(const std::vector<uint64_t>& in
     return voxel_processor_->reconstructPointCloud(reconstructed_grid, cloud);
 }
 
+bool PointCloudCompressor::decompressFromArchive(const CompressedMapData& archive,
+                                                 PointCloud& cloud) {
+    if (archive.voxel_size <= 0.0f) {
+        std::cerr << "Invalid voxel size in archive\n";
+        return false;
+    }
+    if (archive.block_size <= 0) {
+        std::cerr << "Invalid block size in archive\n";
+        return false;
+    }
+
+    const uint32_t pattern_bytes = (archive.pattern_length + 7U) / 8U;
+    if (pattern_bytes == 0) {
+        std::cerr << "Invalid pattern length in archive\n";
+        return false;
+    }
+    if (archive.dictionary_size == 0 ||
+        archive.dictionary_patterns.size() != static_cast<size_t>(archive.dictionary_size) * pattern_bytes) {
+        std::cerr << "Dictionary payload mismatch in archive\n";
+        return false;
+    }
+
+    std::vector<std::vector<uint8_t>> patterns;
+    patterns.reserve(archive.dictionary_size);
+    const uint8_t* payload = archive.dictionary_patterns.data();
+    for (uint32_t i = 0; i < archive.dictionary_size; ++i) {
+        patterns.emplace_back(payload, payload + pattern_bytes);
+        payload += pattern_bytes;
+    }
+    dictionary_builder_->setDictionary(patterns);
+
+    std::vector<uint64_t> indices;
+    indices.reserve(archive.block_indices.size());
+    for (uint32_t value : archive.block_indices) {
+        indices.push_back(static_cast<uint64_t>(value));
+    }
+
+    auto deriveDimension = [&](double min_val, double max_val) -> int {
+        const double length = max_val - min_val;
+        if (archive.voxel_size <= 0.0f) {
+            return 0;
+        }
+        return static_cast<int>(std::round(length / static_cast<double>(archive.voxel_size)));
+    };
+
+    int dim_x = archive.grid_dimensions[0];
+    int dim_y = archive.grid_dimensions[1];
+    int dim_z = archive.grid_dimensions[2];
+    if (dim_x <= 0 || dim_y <= 0 || dim_z <= 0) {
+        dim_x = deriveDimension(archive.bounding_box_min[0], archive.bounding_box_max[0]);
+        dim_y = deriveDimension(archive.bounding_box_min[1], archive.bounding_box_max[1]);
+        dim_z = deriveDimension(archive.bounding_box_min[2], archive.bounding_box_max[2]);
+    }
+    if (dim_x <= 0 || dim_y <= 0 || dim_z <= 0) {
+        std::cerr << "Failed to derive grid dimensions from archive\n";
+        return false;
+    }
+
+    settings_.voxel_size = archive.voxel_size;
+    settings_.block_size = static_cast<int>(archive.block_size);
+    voxel_processor_->setVoxelSize(settings_.voxel_size);
+    voxel_processor_->setBlockSize(settings_.block_size);
+
+    VoxelGrid metadata_grid;
+    metadata_grid.initialize(dim_x, dim_y, dim_z, archive.voxel_size);
+    metadata_grid.setOrigin(archive.grid_origin[0], archive.grid_origin[1], archive.grid_origin[2]);
+
+    VoxelGrid reconstructed_grid;
+    if (!reconstructVoxelGrid(indices, metadata_grid, reconstructed_grid)) {
+        return false;
+    }
+
+    if (!voxel_processor_->reconstructPointCloud(reconstructed_grid, cloud)) {
+        return false;
+    }
+
+    cached_voxel_grid_ = reconstructed_grid;
+    return true;
+}
+
 void PointCloudCompressor::initializeTempPaths(const std::string& output_prefix) {
     // Create temp directory if it doesn't exist
     std::filesystem::create_directories(settings_.temp_directory);

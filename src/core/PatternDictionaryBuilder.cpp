@@ -163,4 +163,18 @@ float PatternDictionaryBuilder::getCompressionRatio() const {
     return static_cast<float>(compressed_bits) / static_cast<float>(original_bits);
 }
 
+void PatternDictionaryBuilder::setDictionary(const std::vector<std::vector<uint8_t>>& patterns) {
+    unique_patterns_ = patterns;
+    pattern_to_index_.clear();
+    pattern_indices_.clear();
+    max_index_ = 0;
+
+    uint64_t index = 0;
+    for (const auto& pattern : unique_patterns_) {
+        pattern_to_index_[pattern] = index;
+        max_index_ = index;
+        ++index;
+    }
+}
+
 } // namespace pointcloud_compressor

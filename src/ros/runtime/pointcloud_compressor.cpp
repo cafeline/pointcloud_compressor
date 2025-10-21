@@ -206,6 +206,11 @@ void populateHdf5Data(const CompressionResult& result,
     float origin_z = 0.0f;
     result.voxel_grid.getOrigin(origin_x, origin_y, origin_z);
     data.grid_origin = {origin_x, origin_y, origin_z};
+    const auto dims = result.voxel_grid.getDimensions();
+    data.grid_dimensions = {
+        static_cast<int32_t>(dims.x),
+        static_cast<int32_t>(dims.y),
+        static_cast<int32_t>(dims.z)};
 
     data.pattern_length = pattern_bits;
     data.dictionary_patterns.assign(dictionary_buffer.begin(), dictionary_buffer.end());

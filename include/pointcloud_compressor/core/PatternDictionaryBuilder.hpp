@@ -32,10 +32,13 @@ public:
     // Save/load dictionary with specified index bit size
     bool saveDictionary(const std::string& filename, int index_bit_size = 0) const;
     bool loadDictionary(const std::string& filename);
-    
+
     // Statistics
     size_t getUniquePatternCount() const;
     float getCompressionRatio() const;
+
+    // Load dictionary directly from pattern payloads (used for archive playback)
+    void setDictionary(const std::vector<std::vector<uint8_t>>& patterns);
     
 private:
     std::vector<std::vector<uint8_t>> unique_patterns_;

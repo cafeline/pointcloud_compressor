@@ -6,6 +6,7 @@
 #include <optional>
 #include <map>
 #include "pointcloud_compressor/io/PointCloudIO.hpp"
+#include "pointcloud_compressor/io/HDF5IO.hpp"
 #include "pointcloud_compressor/core/VoxelProcessor.hpp"
 #include "pointcloud_compressor/core/PatternDictionaryBuilder.hpp"
 #include "pointcloud_compressor/core/PatternEncoder.hpp"
@@ -116,6 +117,10 @@ public:
     // Decompress to VoxelGrid (preserves exact grid structure)
     bool decompressToGrid(const std::string& compressed_prefix,
                          VoxelGrid& grid);
+
+    // Decompress directly from archive data (HDF5)
+    bool decompressFromArchive(const CompressedMapData& archive,
+                               PointCloud& cloud);
 
     // Find optimal compression settings
     CompressionSettings findOptimalSettings(const std::string& input_file,

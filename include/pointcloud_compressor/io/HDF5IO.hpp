@@ -25,6 +25,7 @@ struct CompressedMapData {
     uint32_t block_size = 8;
     // Grid origin in world coordinates (meters)
     std::array<float, 3> grid_origin = {0.0f, 0.0f, 0.0f};
+    std::array<int32_t, 3> grid_dimensions = {0, 0, 0};  // Voxels per axis
     
     // Dictionary data
     std::vector<uint8_t> dictionary_patterns;  // Flattened pattern data

@@ -80,7 +80,7 @@ target_link_libraries(${PROJECT_NAME}_core PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_H
 
 # Main executable
 add_executable(${PROJECT_NAME}_cli src/apps/cli_main.cpp)
-target_link_libraries(${PROJECT_NAME}_cli ${PROJECT_NAME}_core)
+target_link_libraries(${PROJECT_NAME}_cli ${PROJECT_NAME}_core ${PROJECT_NAME}_runtime)
 
 # ROS2 Node executable
 add_executable(${PROJECT_NAME}_node src/ros/pointcloud_compressor_node.cpp)

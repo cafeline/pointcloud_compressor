@@ -365,12 +365,21 @@ bool HDF5IO::writeCompressionParams(hid_t file_id, const CompressedMapData& data
     
     // grid_origin (vector length 3)
     H5Sclose(dataspace);
-    hsize_t origin_dims = 3;
-    dataspace = H5Screate_simple(1, &origin_dims, NULL);
+    hsize_t vec_dims = 3;
+    dataspace = H5Screate_simple(1, &vec_dims, NULL);
     dataset = H5Dcreate2(group_id, "grid_origin", H5T_NATIVE_FLOAT, dataspace,
                          H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     float origin_buf[3] = {data.grid_origin[0], data.grid_origin[1], data.grid_origin[2]};
     H5Dwrite(dataset, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, origin_buf);
+    H5Dclose(dataset);
+
+    // Grid voxel dimensions
+    H5Sclose(dataspace);
+    dataspace = H5Screate_simple(1, &vec_dims, NULL);
+    dataset = H5Dcreate2(group_id, "grid_dimensions", H5T_NATIVE_INT32, dataspace,
+                         H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    int32_t dim_buf[3] = {data.grid_dimensions[0], data.grid_dimensions[1], data.grid_dimensions[2]};
+    H5Dwrite(dataset, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, dim_buf);
     H5Dclose(dataset);
     
     H5Sclose(dataspace);
@@ -439,6 +448,17 @@ bool HDF5IO::readCompressionParams(hid_t file_id, CompressedMapData& data) {
         data.grid_origin[0] = origin_buf[0];
         data.grid_origin[1] = origin_buf[1];
         data.grid_origin[2] = origin_buf[2];
+        H5Dclose(dataset);
+    }
+
+    // grid_dimensions (optional for legacy archives)
+    if (H5Lexists(group_id, "grid_dimensions", H5P_DEFAULT)) {
+        dataset = H5Dopen2(group_id, "grid_dimensions", H5P_DEFAULT);
+        int32_t dims_buf[3] = {0, 0, 0};
+        H5Dread(dataset, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, dims_buf);
+        data.grid_dimensions[0] = dims_buf[0];
+        data.grid_dimensions[1] = dims_buf[1];
+        data.grid_dimensions[2] = dims_buf[2];
         H5Dclose(dataset);
     }
     

@@ -47,8 +47,9 @@ protected:
         // Compression parameters
         data.voxel_size = 0.1f;
         data.dictionary_size = 6;
-        data.pattern_bits = 8;
+        data.pattern_bits = 512;
         data.block_size = 8;
+        data.grid_origin = {0.0f, 0.0f, 0.0f};
 
         // Dictionary patterns（各パターン8x8x8ビット=64バイト）
         data.pattern_length = 512;
@@ -72,6 +73,11 @@ protected:
                    static_cast<size_t>(dims[1]) * static_cast<size_t>(bz));
         };
 
+        data.grid_dimensions = {
+            data.block_dims[0] * static_cast<int32_t>(data.block_size),
+            data.block_dims[1] * static_cast<int32_t>(data.block_size),
+            data.block_dims[2] * static_cast<int32_t>(data.block_size)};
+
         data.block_indices[linear_index(0, 0, 0)] = 0;
         data.block_indices[linear_index(1, 0, 0)] = 5;
         data.block_indices[linear_index(2, 1, 0)] = 3;
@@ -81,8 +87,11 @@ protected:
         data.compressed_voxels = 4;
         data.compression_ratio = static_cast<double>(data.original_points) /
                                 static_cast<double>(data.compressed_voxels);
-        data.bounding_box_min = {-10.0, -10.0, -10.0};
-        data.bounding_box_max = {10.0, 10.0, 10.0};
+        data.bounding_box_min = {0.0, 0.0, 0.0};
+        data.bounding_box_max = {
+            static_cast<double>(data.grid_dimensions[0]) * data.voxel_size,
+            static_cast<double>(data.grid_dimensions[1]) * data.voxel_size,
+            static_cast<double>(data.grid_dimensions[2]) * data.voxel_size};
 
         return data;
     }
@@ -363,6 +372,14 @@ TEST_F(HDF5IOTest, LargeDataset) {
     large_data.block_dims = {100, 100, 10};
     large_data.block_index_bit_width = 5;
     large_data.block_index_sentinel = 0;
+    large_data.grid_dimensions = {
+        large_data.block_dims[0] * static_cast<int32_t>(large_data.block_size),
+        large_data.block_dims[1] * static_cast<int32_t>(large_data.block_size),
+        large_data.block_dims[2] * static_cast<int32_t>(large_data.block_size)};
+    large_data.bounding_box_max = {
+        static_cast<double>(large_data.grid_dimensions[0]) * large_data.voxel_size,
+        static_cast<double>(large_data.grid_dimensions[1]) * large_data.voxel_size,
+        static_cast<double>(large_data.grid_dimensions[2]) * large_data.voxel_size};
     large_data.block_indices.assign(num_cells, 0);
     for (size_t i = 0; i < num_cells; ++i) {
         large_data.block_indices[i] = static_cast<uint32_t>((i * 7) % 23);
