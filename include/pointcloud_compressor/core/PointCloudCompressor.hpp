@@ -118,9 +118,6 @@ public:
     bool decompressToGrid(const std::string& compressed_prefix,
                          VoxelGrid& grid);
 
-    // Decompress directly from archive data (HDF5)
-    bool decompressFromArchive(const CompressedMapData& archive,
-                               PointCloud& cloud);
 
     // Find optimal compression settings
     CompressionSettings findOptimalSettings(const std::string& input_file,

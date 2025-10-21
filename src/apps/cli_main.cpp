@@ -1,10 +1,8 @@
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
-#include "pointcloud_compressor/io/HDF5IO.hpp"
 #include "pointcloud_compressor/runtime/RuntimeAPI.hpp"
 
 #include <cmath>
 #include <cstdint>
-#include <filesystem>
 #include <iostream>
 #include <string>
 
@@ -18,7 +16,6 @@ void printUsage(const char* program_name) {
     std::cout << "Usage: " << program_name << " <command> [options]\n";
     std::cout << "\nCommands:\n";
     std::cout << "  compress <input.pcd> <output.h5>         - Compress a PCD/PLY file into an HDF5 archive\n";
-    std::cout << "  decompress <input.h5> <output.pcd>       - Decompress an HDF5 archive to PCD\n";
     std::cout << "  optimize <input.pcd>                     - Find optimal compression settings\n";
     std::cout << "\nOptions for compress:\n";
     std::cout << "  --voxel-size <size>     Voxel size (default: 0.01)\n";
@@ -27,7 +24,6 @@ void printUsage(const char* program_name) {
     std::cout << "  --raw-hdf5 <path>       Also export raw voxel grid to this HDF5 file\n";
     std::cout << "\nExamples:\n";
     std::cout << "  " << program_name << " compress input.pcd output.h5 --voxel-size 0.005\n";
-    std::cout << "  " << program_name << " decompress compressed_map.h5 restored.pcd\n";
     std::cout << "  " << program_name << " optimize input.pcd\n";
 }
 
@@ -42,31 +38,6 @@ std::string ensureHdf5Extension(std::string path) {
         }
     }
     return path + ".h5";
-}
-
-bool decompressFromHdf5(const std::string& archive_path, const std::string& output_pcd) {
-    HDF5IO io;
-    pointcloud_compressor::CompressedMapData data;
-    if (!io.read(archive_path, data)) {
-        std::cerr << "Failed to load HDF5 archive: " << archive_path
-                  << "\nReason: " << io.getLastError() << "\n";
-        return false;
-    }
-
-    PointCloudCompressor compressor;
-    pointcloud_compressor::PointCloud cloud;
-    if (!compressor.decompressFromArchive(data, cloud)) {
-        std::cerr << "Decompression failed while reconstructing point cloud.\n";
-        return false;
-    }
-
-    if (!pointcloud_compressor::PointCloudIO::savePointCloud(output_pcd, cloud)) {
-        std::cerr << "Failed to save point cloud to " << output_pcd << "\n";
-        return false;
-    }
-
-    std::cout << "Decompression complete. Output written to " << output_pcd << "\n";
-    return true;
 }
 
 void printCompressionSummary(const PCCCompressionReport& report, const std::string& output_h5) {
@@ -153,25 +124,6 @@ int main(int argc, char** argv) {
 
             if (!raw_hdf5_path.empty()) {
                 std::cout << "  Raw voxel grid   : " << raw_hdf5_path << "\n";
-            }
-
-        } else if (command == "decompress") {
-            if (argc < 4) {
-                std::cerr << "Error: decompress command requires input archive and output file\n";
-                printUsage(argv[0]);
-                return 1;
-            }
-
-            const std::string archive_path = argv[2];
-            const std::string output_file = argv[3];
-
-            if (!std::filesystem::exists(archive_path)) {
-                std::cerr << "Input archive does not exist: " << archive_path << "\n";
-                return 1;
-            }
-
-            if (!decompressFromHdf5(archive_path, output_file)) {
-                return 1;
             }
 
         } else if (command == "optimize") {
