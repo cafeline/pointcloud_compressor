@@ -5,12 +5,13 @@
 
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/io/HDF5IO.hpp"
+#include "pointcloud_compressor/runtime/RuntimeHelpers.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <memory>
-#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -58,16 +59,14 @@ PCCCompressionReport makeErrorReport(RuntimeHandle* impl, const std::string& mes
 }
 
 std::string makeTempPrefix(const std::string& base_dir) {
-    const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    std::uniform_int_distribution<uint64_t> dist;
-    auto random_suffix = dist(gen);
-    std::filesystem::path dir = base_dir.empty()
+    const std::filesystem::path root = base_dir.empty()
         ? std::filesystem::temp_directory_path()
         : std::filesystem::path(base_dir);
-    dir /= "pcc_runtime_" + std::to_string(now) + "_" + std::to_string(random_suffix);
-    return dir.string();
+    static std::atomic<uint64_t> counter{0};
+    const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    const uint64_t unique_id = counter.fetch_add(1, std::memory_order_relaxed);
+    const std::string suffix = "pcc_runtime_" + std::to_string(timestamp) + "_" + std::to_string(unique_id);
+    return (root / suffix).string();
 }
 
 void cleanupTempFiles(const std::string& prefix) {
@@ -179,86 +178,6 @@ std::vector<uint8_t> buildOccupancyBuffer(const VoxelGrid& grid) {
     return occupancy;
 }
 
-uint8_t computeBitWidth(uint64_t value) {
-    if (value == 0) {
-        return 1;
-    }
-    uint8_t bits = 0;
-    while (value > 0) {
-        ++bits;
-        value >>= 1;
-    }
-    return bits;
-}
-
-void populateHdf5Data(const CompressionResult& result,
-                      const PCCCompressionRequest& request,
-                      const std::vector<uint8_t>& dictionary_buffer,
-                      const std::vector<uint8_t>& packed_indices,
-                      pointcloud_compressor::CompressedMapData& data) {
-    data.voxel_size = static_cast<float>(request.voxel_size);
-    data.dictionary_size = static_cast<uint32_t>(result.num_unique_patterns);
-    data.block_size = static_cast<uint32_t>(result.block_size);
-    const uint32_t pattern_bits = static_cast<uint32_t>(result.block_size) *
-                                  static_cast<uint32_t>(result.block_size) *
-                                  static_cast<uint32_t>(result.block_size);
-    data.pattern_bits = pattern_bits;
-
-    float origin_x = 0.0f;
-    float origin_y = 0.0f;
-    float origin_z = 0.0f;
-    result.voxel_grid.getOrigin(origin_x, origin_y, origin_z);
-    data.grid_origin = {origin_x, origin_y, origin_z};
-    const auto dims = result.voxel_grid.getDimensions();
-    data.grid_dimensions = {
-        static_cast<int32_t>(dims.x),
-        static_cast<int32_t>(dims.y),
-        static_cast<int32_t>(dims.z)};
-
-    data.pattern_length = pattern_bits;
-    data.dictionary_patterns.assign(dictionary_buffer.begin(), dictionary_buffer.end());
-
-    data.block_dims = {
-        static_cast<int32_t>(result.blocks_count.x),
-        static_cast<int32_t>(result.blocks_count.y),
-        static_cast<int32_t>(result.blocks_count.z)};
-
-    data.block_indices.clear();
-    data.block_indices.reserve(result.block_indices.size());
-    for (uint64_t index : result.block_indices) {
-        data.block_indices.push_back(static_cast<uint32_t>(index));
-    }
-
-    const uint64_t max_index = result.block_indices.empty()
-        ? 0ULL
-        : *std::max_element(result.block_indices.begin(), result.block_indices.end());
-    uint8_t bit_width = computeBitWidth(max_index);
-    if (bit_width > 32) {
-        bit_width = 32;
-    }
-    data.block_index_bit_width = bit_width;
-    data.block_index_sentinel = 0;
-
-    data.original_points = static_cast<uint64_t>(result.point_count);
-    data.compressed_voxels = static_cast<uint64_t>(result.num_blocks) *
-                             static_cast<uint64_t>(result.block_size) *
-                             static_cast<uint64_t>(result.block_size) *
-                             static_cast<uint64_t>(result.block_size);
-    data.compression_ratio = result.compression_ratio;
-
-    const double origin_dx = result.grid_origin.x;
-    const double origin_dy = result.grid_origin.y;
-    const double origin_dz = result.grid_origin.z;
-    data.bounding_box_min = {origin_dx, origin_dy, origin_dz};
-
-    const double max_x = origin_dx + result.grid_dimensions.x;
-    const double max_y = origin_dy + result.grid_dimensions.y;
-    const double max_z = origin_dz + result.grid_dimensions.z;
-    data.bounding_box_max = {max_x, max_y, max_z};
-
-    (void)packed_indices;  // packed representation used for ROS message; HDF5 stores 32-bit indices.
-}
-
 void populateRawHdf5Data(const CompressionResult& result,
                          const PCCCompressionRequest& request,
                          HDF5IO::RawVoxelGridData& raw_data,
@@ -359,14 +278,17 @@ PCCCompressionReport buildSuccessReport(RuntimeHandle* impl,
 void maybeWriteCompressedMap(const CompressionResult& result,
                              const PCCCompressionRequest& request,
                              RuntimeHandle* impl,
-                             const std::vector<uint8_t>& dictionary_buffer,
-                             const std::vector<uint8_t>& indices_buffer) {
+                             const std::vector<uint8_t>& dictionary_buffer) {
     if (!request.save_hdf5 || request.hdf5_output_path == nullptr || request.hdf5_output_path[0] == '\0') {
         return;
     }
 
+    const auto block_indices_u32 =
+        pointcloud_compressor::runtime::convertBlockIndicesToU32(result.block_indices);
+
     pointcloud_compressor::CompressedMapData data;
-    populateHdf5Data(result, request, dictionary_buffer, indices_buffer, data);
+    pointcloud_compressor::runtime::populateCompressedMapData(
+        result, request, dictionary_buffer, block_indices_u32, data);
 
     HDF5IO hdf5_io;
     if (!hdf5_io.write(request.hdf5_output_path, data)) {
@@ -489,7 +411,7 @@ extern "C" PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
 
     auto report = buildSuccessReport(impl, result, *request);
 
-    maybeWriteCompressedMap(result, *request, impl, impl->dictionary_buffer, impl->indices_buffer);
+    maybeWriteCompressedMap(result, *request, impl, impl->dictionary_buffer);
     maybeWriteRawGrid(result, *request, impl, impl->occupancy_buffer);
 
     if (!impl->error_message.empty()) {

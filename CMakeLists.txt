@@ -62,6 +62,7 @@ target_compile_features(${PROJECT_NAME}_core PUBLIC cxx_std_17)
 # Runtime integration library
 add_library(${PROJECT_NAME}_runtime
   src/ros/runtime/pointcloud_compressor.cpp
+  src/ros/runtime/RuntimeHelpers.cpp
 )
 target_link_libraries(${PROJECT_NAME}_runtime PUBLIC ${PROJECT_NAME}_core)
 target_include_directories(${PROJECT_NAME}_runtime PUBLIC
@@ -234,6 +235,9 @@ if(BUILD_TESTING)
   ament_add_gtest(test_runtime_api test/test_runtime_api.cpp)
   target_link_libraries(test_runtime_api ${PROJECT_NAME}_runtime)
   target_compile_definitions(test_runtime_api PRIVATE TEST_DATA_DIR="${TEST_DATA_DIR}")
+
+  ament_add_gtest(test_runtime_helpers test/test_runtime_helpers.cpp)
+  target_link_libraries(test_runtime_helpers ${PROJECT_NAME}_runtime)
 endif()
 
 # Export dependencies
