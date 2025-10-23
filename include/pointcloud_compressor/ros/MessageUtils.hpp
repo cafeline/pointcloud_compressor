@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Ryo Funai
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef POINTCLOUD_COMPRESSOR_MESSAGE_UTILS_HPP
 #define POINTCLOUD_COMPRESSOR_MESSAGE_UTILS_HPP
 

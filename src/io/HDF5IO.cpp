@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Ryo Funai
+// SPDX-License-Identifier: Apache-2.0
+
 #include <pointcloud_compressor/io/HDF5IO.hpp>
 #include <algorithm>
 #include <filesystem>

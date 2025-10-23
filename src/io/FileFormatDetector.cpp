@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Ryo Funai
+// SPDX-License-Identifier: Apache-2.0
+
 #include "pointcloud_compressor/io/FileFormatDetector.hpp"
 #include "pointcloud_compressor/io/PcdIO.hpp"
 #include "pointcloud_compressor/io/PlyIO.hpp"

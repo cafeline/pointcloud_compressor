@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Ryo Funai
+// SPDX-License-Identifier: Apache-2.0
+
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_msgs/msg/float32.hpp>

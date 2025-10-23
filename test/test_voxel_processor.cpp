@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Ryo Funai
+// SPDX-License-Identifier: Apache-2.0
+
 #include <gtest/gtest.h>
 #include <random>
 #include "pointcloud_compressor/core/VoxelProcessor.hpp"

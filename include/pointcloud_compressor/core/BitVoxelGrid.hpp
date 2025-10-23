@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2025 Ryo Funai
+// SPDX-License-Identifier: Apache-2.0
+
 #ifndef POINTCLOUD_COMPRESSOR_BIT_VOXEL_GRID_HPP
 #define POINTCLOUD_COMPRESSOR_BIT_VOXEL_GRID_HPP
 
