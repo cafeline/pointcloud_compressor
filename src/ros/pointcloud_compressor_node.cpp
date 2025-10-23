@@ -9,12 +9,10 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <algorithm>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -95,8 +93,7 @@ class PointCloudCompressorNode : public rclcpp::Node {
 public:
     PointCloudCompressorNode()
         : rclcpp::Node("pointcloud_compressor_node"),
-          runtime_handle_(pcc_runtime_create()),
-          compressed_published_(false) {
+          runtime_handle_(pcc_runtime_create()) {
         declareParameters();
         loadParameters();
 
@@ -110,7 +107,7 @@ public:
         }
 
         setupPublishers();
-        setupTimer();
+        compressAndPublish();
 
         RCLCPP_INFO(get_logger(),
                     "PointCloud Compressor Node initialized - Input: %s, Voxel: %.3f, Block: %d",
@@ -127,46 +124,34 @@ public:
 private:
     void declareParameters() {
         this->declare_parameter("input_file", "");
-        this->declare_parameter("input_pcd_file", "");
         this->declare_parameter("voxel_size", 0.01);
         this->declare_parameter("block_size", 8);
-        this->declare_parameter("use_8bit_indices", false);
         this->declare_parameter("min_points_threshold", 1);
-        this->declare_parameter("publish_once", true);
-        this->declare_parameter("publish_interval_ms", 1000);
         this->declare_parameter("publish_occupied_voxel_markers", false);
         this->declare_parameter("save_hdf5", false);
         this->declare_parameter("hdf5_output_file", "/tmp/compressed_map.h5");
         this->declare_parameter("save_raw_hdf5", false);
         this->declare_parameter("raw_hdf5_output_file", "/tmp/raw_voxel_grid.h5");
-        this->declare_parameter("bounding_box_margin_ratio", 0.0);
     }
 
     void loadParameters() {
         input_file_ = this->get_parameter("input_file").as_string();
-        if (input_file_.empty()) {
-            input_file_ = this->get_parameter("input_pcd_file").as_string();
-        }
 
         voxel_size_ = this->get_parameter("voxel_size").as_double();
         block_size_ = this->get_parameter("block_size").as_int();
-        use_8bit_indices_ = this->get_parameter("use_8bit_indices").as_bool();
         min_points_threshold_ = this->get_parameter("min_points_threshold").as_int();
-        publish_once_ = this->get_parameter("publish_once").as_bool();
-        publish_interval_ms_ = this->get_parameter("publish_interval_ms").as_int();
         publish_occupied_voxel_markers_ = this->get_parameter("publish_occupied_voxel_markers").as_bool();
 
         save_hdf5_ = this->get_parameter("save_hdf5").as_bool();
         hdf5_output_file_ = this->get_parameter("hdf5_output_file").as_string();
         save_raw_hdf5_ = this->get_parameter("save_raw_hdf5").as_bool();
         raw_hdf5_output_file_ = this->get_parameter("raw_hdf5_output_file").as_string();
-        bounding_box_margin_ratio_ = this->get_parameter("bounding_box_margin_ratio").as_double();
     }
 
     bool validateConfiguration() {
         if (input_file_.empty()) {
             RCLCPP_ERROR(get_logger(),
-                         "No input file specified. Use parameter 'input_file' or 'input_pcd_file'.");
+                         "No input file specified. Set the 'input_file' parameter.");
             return false;
         }
 
@@ -204,16 +189,6 @@ private:
         }
     }
 
-    void setupTimer() {
-        if (publish_once_) {
-            compressAndPublish();
-        } else {
-            timer_ = this->create_wall_timer(
-                std::chrono::milliseconds(publish_interval_ms_),
-                [this]() { compressAndPublish(); });
-        }
-    }
-
     PCCCompressionRequest buildCompressionRequest() const {
         PCCCompressionRequest request{};
         request.input_file = input_file_.c_str();
@@ -232,10 +207,6 @@ private:
     void compressAndPublish() {
         if (!runtime_handle_) {
             RCLCPP_ERROR(get_logger(), "Runtime handle is not available");
-            return;
-        }
-
-        if (publish_once_ && compressed_published_) {
             return;
         }
 
@@ -265,7 +236,6 @@ private:
             RCLCPP_WARN(get_logger(), "Runtime warning: %s", report.error_message);
         }
 
-        compressed_published_ = true;
         pcc_runtime_release_report(runtime_handle_, &report);
     }
 
@@ -409,23 +379,18 @@ private:
     PCCRuntimeHandle* runtime_handle_;
     rclcpp::Publisher<pointcloud_compressor::msg::PatternDictionary>::SharedPtr pattern_dict_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
-    rclcpp::TimerBase::SharedPtr timer_;
 
     std::string input_file_;
     double voxel_size_{0.01};
     int block_size_{8};
     bool use_8bit_indices_{false};
     int min_points_threshold_{1};
-    bool publish_once_{true};
-    int publish_interval_ms_{1000};
     bool publish_occupied_voxel_markers_{false};
     bool save_hdf5_{false};
     std::string hdf5_output_file_;
     bool save_raw_hdf5_{false};
     std::string raw_hdf5_output_file_;
     double bounding_box_margin_ratio_{0.0};
-
-    bool compressed_published_;
 };
 
 int main(int argc, char** argv) {

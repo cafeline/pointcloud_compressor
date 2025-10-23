@@ -45,6 +45,7 @@ The CLI and ROS 2 node writes a HDF5 archive.
 
 Compresses a point cloud file and publishes a PatternDictionary message together with optional voxel markers for visualization. The node leverages the runtime compression library and does not subscribe to sensor streams. It is intended for preprocessing map assets.
 
+
 #### Subscribed Topics
 
 | Name | Type | Description |
@@ -63,19 +64,14 @@ Compresses a point cloud file and publishes a PatternDictionary message together
 | Name | Type | Default | Description |
 | :--- | :--- | :------ | :---------- |
 | `input_file` | `string` | `""` | Path to the source point cloud (`.pcd`/`.ply`). |
-| `input_pcd_file` | `string` | `""` | Legacy alias of `input_file`. |
 | `voxel_size` | `double` | `0.01` | Edge length of voxels used during voxelization (meters). |
 | `block_size` | `int` | `8` | Side length of cubic blocks grouped into dictionary patterns. |
-| `use_8bit_indices` | `bool` | `false` | Forces 8-bit indices when feasible (otherwise auto-select). |
 | `min_points_threshold` | `int` | `1` | Minimum number of points required for a voxel to be treated as occupied. |
-| `publish_once` | `bool` | `true` | Publishes a single compressed result on startup when true. |
-| `publish_interval_ms` | `int` | `1000` | Periodic publish interval (ms) when `publish_once` is false. |
 | `publish_occupied_voxel_markers` | `bool` | `false` | Enables MarkerArray publication for visualization. |
 | `save_hdf5` | `bool` | `false` | Writes compressed artifacts to an HDF5 map archive. |
 | `hdf5_output_file` | `string` | `/tmp/compressed_map.h5` | Target path for the compressed HDF5 file. |
 | `save_raw_hdf5` | `bool` | `false` | Exports the raw voxel occupancy grid to HDF5. |
 | `raw_hdf5_output_file` | `string` | `/tmp/raw_voxel_grid.h5` | Output path for the raw voxel grid archive. |
-| `bounding_box_margin_ratio` | `double` | `0.0` | Extra margin applied around the detected bounding box before voxelization. |
 
 ### block_size_optimizer_node
 
