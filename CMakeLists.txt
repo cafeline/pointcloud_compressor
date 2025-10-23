@@ -10,6 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(OpenMP)
 find_package(HDF5 REQUIRED COMPONENTS C CXX HL)
+find_package(yaml-cpp REQUIRED)
 
 # ROS2 dependencies
 find_package(rclcpp REQUIRED)
@@ -50,6 +51,7 @@ set(CORE_SOURCES
   src/core/PatternDictionaryBuilder.cpp
   src/core/PatternEncoder.cpp
   src/core/PointCloudCompressor.cpp
+  src/config/CompressorConfig.cpp
 )
 
 # Create core library
@@ -63,6 +65,8 @@ target_compile_features(${PROJECT_NAME}_core PUBLIC cxx_std_17)
 add_library(${PROJECT_NAME}_runtime
   src/ros/runtime/pointcloud_compressor.cpp
   src/ros/runtime/RuntimeHelpers.cpp
+  src/ros/runtime/CompressionArtifacts.cpp
+  src/ros/runtime/TempFileManager.cpp
 )
 target_link_libraries(${PROJECT_NAME}_runtime PUBLIC ${PROJECT_NAME}_core)
 target_include_directories(${PROJECT_NAME}_runtime PUBLIC
@@ -77,7 +81,7 @@ if(OpenMP_CXX_FOUND)
 endif()
 
 # Link HDF5 libraries
-target_link_libraries(${PROJECT_NAME}_core PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_HL_LIBRARIES})
+target_link_libraries(${PROJECT_NAME}_core PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_HL_LIBRARIES} yaml-cpp)
 
 # Main executable
 add_executable(${PROJECT_NAME}_cli src/apps/cli_main.cpp)
@@ -238,6 +242,15 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_runtime_helpers test/test_runtime_helpers.cpp)
   target_link_libraries(test_runtime_helpers ${PROJECT_NAME}_runtime)
+
+  ament_add_gtest(test_runtime_artifacts test/test_runtime_artifacts.cpp)
+  target_link_libraries(test_runtime_artifacts ${PROJECT_NAME}_runtime)
+
+  ament_add_gtest(test_runtime_temp_manager test/test_runtime_temp_manager.cpp)
+  target_link_libraries(test_runtime_temp_manager ${PROJECT_NAME}_runtime)
+
+  ament_add_gtest(test_compressor_config test/test_compressor_config.cpp)
+  target_link_libraries(test_compressor_config ${PROJECT_NAME}_core)
 endif()
 
 # Export dependencies

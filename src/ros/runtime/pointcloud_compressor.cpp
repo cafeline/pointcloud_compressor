@@ -5,11 +5,11 @@
 
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/io/HDF5IO.hpp"
+#include "pointcloud_compressor/runtime/CompressionArtifacts.hpp"
 #include "pointcloud_compressor/runtime/RuntimeHelpers.hpp"
+#include "pointcloud_compressor/runtime/TempFileManager.hpp"
 
 #include <algorithm>
-#include <atomic>
-#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -58,126 +58,6 @@ PCCCompressionReport makeErrorReport(RuntimeHandle* impl, const std::string& mes
     return report;
 }
 
-std::string makeTempPrefix(const std::string& base_dir) {
-    const std::filesystem::path root = base_dir.empty()
-        ? std::filesystem::temp_directory_path()
-        : std::filesystem::path(base_dir);
-    static std::atomic<uint64_t> counter{0};
-    const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    const uint64_t unique_id = counter.fetch_add(1, std::memory_order_relaxed);
-    const std::string suffix = "pcc_runtime_" + std::to_string(timestamp) + "_" + std::to_string(unique_id);
-    return (root / suffix).string();
-}
-
-void cleanupTempFiles(const std::string& prefix) {
-    if (prefix.empty()) {
-        return;
-    }
-
-    static const char* const extensions[] = {"_dict.bin", "_indices.bin", "_meta.bin"};
-    for (const auto* ext : extensions) {
-        std::filesystem::path path(prefix + ext);
-        std::error_code ec;
-        std::filesystem::remove(path, ec);
-    }
-}
-
-std::vector<uint8_t> flattenDictionary(const CompressionResult& result) {
-    std::vector<uint8_t> buffer;
-    if (result.pattern_dictionary.empty()) {
-        return buffer;
-    }
-
-    std::size_t total_bytes = 0;
-    for (const auto& pattern : result.pattern_dictionary) {
-        total_bytes += pattern.size();
-    }
-    buffer.reserve(total_bytes);
-    for (const auto& pattern : result.pattern_dictionary) {
-        buffer.insert(buffer.end(), pattern.begin(), pattern.end());
-    }
-    return buffer;
-}
-
-std::vector<uint8_t> packIndices(const std::vector<uint64_t>& indices, uint8_t bit_size) {
-    std::vector<uint8_t> packed;
-    if (indices.empty()) {
-        return packed;
-    }
-
-    switch (bit_size) {
-        case 8: {
-            packed.reserve(indices.size());
-            for (uint64_t value : indices) {
-                packed.push_back(static_cast<uint8_t>(value & 0xFFu));
-            }
-            break;
-        }
-        case 16: {
-            packed.reserve(indices.size() * 2);
-            for (uint64_t value : indices) {
-                packed.push_back(static_cast<uint8_t>(value & 0xFFu));
-                packed.push_back(static_cast<uint8_t>((value >> 8) & 0xFFu));
-            }
-            break;
-        }
-        case 32: {
-            packed.reserve(indices.size() * 4);
-            for (uint64_t value : indices) {
-                packed.push_back(static_cast<uint8_t>(value & 0xFFu));
-                packed.push_back(static_cast<uint8_t>((value >> 8) & 0xFFu));
-                packed.push_back(static_cast<uint8_t>((value >> 16) & 0xFFu));
-                packed.push_back(static_cast<uint8_t>((value >> 24) & 0xFFu));
-            }
-            break;
-        }
-        case 64: {
-            packed.reserve(indices.size() * 8);
-            for (uint64_t value : indices) {
-                packed.push_back(static_cast<uint8_t>(value & 0xFFu));
-                packed.push_back(static_cast<uint8_t>((value >> 8) & 0xFFu));
-                packed.push_back(static_cast<uint8_t>((value >> 16) & 0xFFu));
-                packed.push_back(static_cast<uint8_t>((value >> 24) & 0xFFu));
-                packed.push_back(static_cast<uint8_t>((value >> 32) & 0xFFu));
-                packed.push_back(static_cast<uint8_t>((value >> 40) & 0xFFu));
-                packed.push_back(static_cast<uint8_t>((value >> 48) & 0xFFu));
-                packed.push_back(static_cast<uint8_t>((value >> 56) & 0xFFu));
-            }
-            break;
-        }
-        default:
-            // Unsupported bit size; leave buffer empty.
-            break;
-    }
-
-    return packed;
-}
-
-std::vector<uint8_t> buildOccupancyBuffer(const VoxelGrid& grid) {
-    const auto dims = grid.getDimensions();
-    if (dims.x <= 0 || dims.y <= 0 || dims.z <= 0) {
-        return {};
-    }
-
-    const std::size_t total_voxels =
-        static_cast<std::size_t>(dims.x) *
-        static_cast<std::size_t>(dims.y) *
-        static_cast<std::size_t>(dims.z);
-
-    std::vector<uint8_t> occupancy;
-    occupancy.reserve(total_voxels);
-
-    for (int z = 0; z < dims.z; ++z) {
-        for (int y = 0; y < dims.y; ++y) {
-            for (int x = 0; x < dims.x; ++x) {
-                occupancy.push_back(grid.getVoxel(x, y, z) ? 1u : 0u);
-            }
-        }
-    }
-
-    return occupancy;
-}
-
 void populateRawHdf5Data(const CompressionResult& result,
                          const PCCCompressionRequest& request,
                          HDF5IO::RawVoxelGridData& raw_data,
@@ -224,9 +104,10 @@ PCCCompressionReport buildSuccessReport(RuntimeHandle* impl,
     PCCCompressionReport report = makeEmptyReport();
     report.success = true;
 
-    impl->dictionary_buffer = flattenDictionary(result);
-    impl->indices_buffer = packIndices(result.block_indices, static_cast<uint8_t>(result.index_bit_size));
-    impl->occupancy_buffer = buildOccupancyBuffer(result.voxel_grid);
+    impl->dictionary_buffer = pointcloud_compressor::runtime::flattenDictionaryPatterns(result.pattern_dictionary);
+    impl->indices_buffer = pointcloud_compressor::runtime::packBlockIndices(
+        result.block_indices, static_cast<uint8_t>(result.index_bit_size));
+    impl->occupancy_buffer = pointcloud_compressor::runtime::buildOccupancyMask(result.voxel_grid);
 
     report.dictionary.num_patterns = static_cast<uint32_t>(result.pattern_dictionary.size());
     const uint32_t pattern_bits = static_cast<uint32_t>(request.block_size) *
@@ -386,22 +267,30 @@ extern "C" PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
     settings.bounding_box_margin_ratio = static_cast<float>(request->bounding_box_margin_ratio);
 
     const auto temp_root = std::filesystem::temp_directory_path().string();
-    const auto temp_prefix = makeTempPrefix(temp_root);
     settings.temp_directory = temp_root;
     impl->compressor->updateSettings(settings);
+
+    pointcloud_compressor::runtime::TempFileManager temp_manager;
+    const auto temp_prefix = temp_manager.createTemporaryPrefix(temp_root);
+
+    struct CleanupGuard {
+        pointcloud_compressor::runtime::TempFileManager* manager;
+        std::string prefix;
+        ~CleanupGuard() {
+            if (manager) {
+                manager->cleanupArtifacts(prefix);
+            }
+        }
+    } cleanup_guard{&temp_manager, temp_prefix};
 
     CompressionResult result;
     try {
         result = impl->compressor->compress(request->input_file, temp_prefix);
     } catch (const std::exception& e) {
-        cleanupTempFiles(temp_prefix);
         return makeErrorReport(impl, std::string("Compression threw exception: ") + e.what());
     } catch (...) {
-        cleanupTempFiles(temp_prefix);
         return makeErrorReport(impl, "Compression threw unknown exception");
     }
-
-    cleanupTempFiles(temp_prefix);
 
     if (!result.success) {
         return makeErrorReport(impl, result.error_message.empty()
