@@ -51,6 +51,7 @@ set(CORE_SOURCES
   src/core/PatternDictionaryBuilder.cpp
   src/core/PatternEncoder.cpp
   src/core/PointCloudCompressor.cpp
+  src/core/CompressionReportFormatter.cpp
   src/core/BlockSizeReportFormatter.cpp
   src/config/CompressorConfig.cpp
   src/config/CliConfigParser.cpp
@@ -271,6 +272,12 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_config_transforms test/test_config_transforms.cpp)
   target_link_libraries(test_config_transforms ${PROJECT_NAME}_core)
+
+  ament_add_gtest(test_error_accumulator test/test_error_accumulator.cpp)
+  target_link_libraries(test_error_accumulator ${PROJECT_NAME}_core)
+
+  ament_add_gtest(test_compression_report_formatter test/test_compression_report_formatter.cpp)
+  target_link_libraries(test_compression_report_formatter ${PROJECT_NAME}_runtime)
 endif()
 
 # Export dependencies

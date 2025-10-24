@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <iomanip>
 #include "pointcloud_compressor/config/CompressorConfig.hpp"
+#include "pointcloud_compressor/config/ConfigTransforms.hpp"
 #include "pointcloud_compressor/core/BlockSizeReportFormatter.hpp"
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/core/VoxelProcessor.hpp"
@@ -67,16 +68,10 @@ public:
             }
         }
 
-        config::BlockSizeOptimizationConfig effective_config;
-        effective_config.base.input_file = input_file_;
-        effective_config.base.voxel_size = voxel_size_;
-        effective_config.min_block_size = min_block_size_;
-        effective_config.max_block_size = max_block_size_;
-        effective_config.step_size = step_size_;
-        effective_config.auto_compress = auto_compress_;
-        effective_config.verbose = verbose_;
+        auto base_config = buildBaseConfig();
+        compression_setup_ = pointcloud_compressor::config::buildCompressionSetup(base_config);
 
-        auto errors = effective_config.validate(true);
+        auto errors = pointcloud_compressor::config::validateForRuntime(compression_setup_);
         if (!errors.empty()) {
             for (const auto& err : errors) {
                 RCLCPP_ERROR(this->get_logger(), "%s", err.c_str());
@@ -85,10 +80,8 @@ public:
             return;
         }
 
-        // Validate input file
         // Initialize compressor
-        CompressionSettings settings(voxel_size_, 8);
-        compressor_ = std::make_unique<PointCloudCompressor>(settings);
+        compressor_ = std::make_unique<PointCloudCompressor>(compression_setup_.settings);
         
         RCLCPP_INFO(this->get_logger(), 
                     "Block Size Optimizer Node initialized");
@@ -115,6 +108,16 @@ public:
     }
     
 private:
+    config::CompressorConfig buildBaseConfig() const {
+        config::CompressorConfig config;
+        config.input_file = input_file_;
+        config.voxel_size = voxel_size_;
+        config.block_size = 8;
+        config.save_hdf5 = false;
+        config.save_raw_hdf5 = false;
+        return config;
+    }
+
     void executeOptimization() {
         RCLCPP_INFO(this->get_logger(), "Starting block size optimization...");
         
@@ -281,8 +284,9 @@ private:
                    optimal_block_size);
         
         // Update settings with optimal block size
-        CompressionSettings settings(voxel_size_, optimal_block_size);
-        compressor_->updateSettings(settings);
+        auto optimal_settings = compression_setup_.settings;
+        optimal_settings.block_size = optimal_block_size;
+        compressor_->updateSettings(optimal_settings);
         
         // Determine output prefix
         std::string prefix = output_prefix_;
@@ -333,6 +337,7 @@ private:
     
     // Compressor
     std::unique_ptr<PointCloudCompressor> compressor_;
+    config::CompressionSetup compression_setup_;
     
     // Store last optimization result for analysis
     BlockSizeOptimizationResult last_result_;

@@ -5,10 +5,12 @@
 #include "pointcloud_compressor/config/ConfigTransforms.hpp"
 #include "pointcloud_compressor/config/CompressorConfig.hpp"
 #include "pointcloud_compressor/core/BlockSizeReportFormatter.hpp"
+#include "pointcloud_compressor/core/CompressionReportFormatter.hpp"
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/runtime/CompressionReportBuilder.hpp"
 #include "pointcloud_compressor/runtime/Hdf5Writers.hpp"
 #include "pointcloud_compressor/runtime/RuntimeAPI.hpp"
+#include "pointcloud_compressor/utils/ErrorAccumulator.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -40,13 +42,8 @@ void printUsage(const char* program_name) {
 }
 
 void printCompressionSummary(const PCCCompressionReport& report, const std::string& output_h5) {
-    std::cout << "Compression successful.\n";
+    std::cout << pointcloud_compressor::formatCompressionSummary(report) << "\n";
     std::cout << "  Output archive   : " << output_h5 << "\n";
-    std::cout << "  Compression ratio: " << report.statistics.compression_ratio << "\n";
-    std::cout << "  Block count      : " << report.indices.total_blocks << "\n";
-    std::cout << "  Dictionary size  : " << report.dictionary.num_patterns
-              << " patterns (" << report.dictionary.pattern_size_bytes << " bytes each)\n";
-    std::cout << "  Index bit width  : " << static_cast<int>(report.indices.index_bit_size) << " bits\n";
 }
 
 }  // namespace
@@ -107,10 +104,11 @@ int main(int argc, char** argv) {
                                                        setup.settings.voxel_size,
                                                        setup.settings.block_size);
 
-            std::string write_errors;
+            pointcloud_compressor::utils::ErrorAccumulator error_acc;
             if (setup.request.save_hdf5 && setup.request.hdf5_output_path) {
-                if (!pointcloud_compressor::runtime::writeCompressedMap(setup.config.hdf5_output_file, map_data, write_errors)) {
-                    std::cerr << write_errors << "\n";
+                std::string err;
+                if (!pointcloud_compressor::runtime::writeCompressedMap(setup.config.hdf5_output_file, map_data, err)) {
+                    error_acc.add(err);
                 } else {
                     printCompressionSummary(report, setup.config.hdf5_output_file);
                 }
@@ -119,12 +117,16 @@ int main(int argc, char** argv) {
             }
 
             if (setup.request.save_raw_hdf5 && setup.request.raw_hdf5_output_path) {
-                write_errors.clear();
-                if (pointcloud_compressor::runtime::writeRawVoxelGrid(setup.config.raw_hdf5_output_file, report, write_errors)) {
+                std::string err;
+                if (pointcloud_compressor::runtime::writeRawVoxelGrid(setup.config.raw_hdf5_output_file, report, err)) {
                     std::cout << "  Raw voxel grid   : " << setup.config.raw_hdf5_output_file << "\n";
                 } else {
-                    std::cerr << write_errors << "\n";
+                    error_acc.add(err);
                 }
+            }
+
+            if (!error_acc.empty()) {
+                std::cerr << error_acc.str() << "\n";
             }
 
             pcc_runtime_release_report(handle, &report);

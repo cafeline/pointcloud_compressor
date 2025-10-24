@@ -4,12 +4,12 @@
 #include "pointcloud_compressor/runtime/RuntimeAPI.hpp"
 
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
-#include "pointcloud_compressor/io/HDF5IO.hpp"
 #include "pointcloud_compressor/runtime/CompressionArtifacts.hpp"
 #include "pointcloud_compressor/runtime/CompressionReportBuilder.hpp"
 #include "pointcloud_compressor/runtime/Hdf5Writers.hpp"
 #include "pointcloud_compressor/runtime/RuntimeHelpers.hpp"
 #include "pointcloud_compressor/runtime/TempFileManager.hpp"
+#include "pointcloud_compressor/utils/ErrorAccumulator.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -22,7 +22,6 @@ namespace {
 
 using pointcloud_compressor::CompressionResult;
 using pointcloud_compressor::CompressionSettings;
-using pointcloud_compressor::HDF5IO;
 using pointcloud_compressor::PointCloudCompressor;
 using pointcloud_compressor::VoxelGrid;
 
@@ -58,51 +57,6 @@ PCCCompressionReport makeErrorReport(RuntimeHandle* impl, const std::string& mes
         report.error_message = impl->error_message.c_str();
     }
     return report;
-}
-
-void maybeWriteCompressedMap(const CompressionResult& result,
-                             const PCCCompressionRequest& request,
-                             RuntimeHandle* impl,
-                             const std::vector<uint8_t>& dictionary_buffer) {
-    if (!request.save_hdf5 || request.hdf5_output_path == nullptr || request.hdf5_output_path[0] == '\0') {
-        return;
-    }
-
-    const auto block_indices_u32 =
-        pointcloud_compressor::runtime::convertBlockIndicesToU32(result.block_indices);
-
-    pointcloud_compressor::runtime::CompressionReportBuilder builder;
-    auto data = builder.toCompressedMapData(result, request, dictionary_buffer, block_indices_u32);
-
-    std::string error;
-    if (!pointcloud_compressor::runtime::writeCompressedMap(request.hdf5_output_path, data, error)) {
-        if (impl) {
-            if (!impl->error_message.empty()) {
-                impl->error_message.append("; ");
-            }
-            impl->error_message.append(error);
-        }
-    }
-}
-
-void maybeWriteRawGrid(const CompressionResult& result,
-                       const PCCCompressionRequest& request,
-                       RuntimeHandle* impl,
-                       std::vector<uint8_t>& occupancy_buffer) {
-    if (!request.save_raw_hdf5 || request.raw_hdf5_output_path == nullptr ||
-        request.raw_hdf5_output_path[0] == '\0') {
-        return;
-    }
-
-    std::string error;
-    if (!pointcloud_compressor::runtime::writeRawVoxelGrid(request.raw_hdf5_output_path, result, request, occupancy_buffer, error)) {
-        if (impl) {
-            if (!impl->error_message.empty()) {
-                impl->error_message.append("; ");
-            }
-            impl->error_message.append(error);
-        }
-    }
 }
 
 }  // namespace
@@ -204,8 +158,41 @@ extern "C" PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
                                        impl->occupancy_buffer,
                                        impl->error_message);
 
-    maybeWriteCompressedMap(result, *request, impl, impl->dictionary_buffer);
-    maybeWriteRawGrid(result, *request, impl, impl->occupancy_buffer);
+    const auto block_indices_u32 =
+        pointcloud_compressor::runtime::convertBlockIndicesToU32(result.block_indices);
+    auto map_data = report_builder.toCompressedMapData(result,
+                                                       *request,
+                                                       impl->dictionary_buffer,
+                                                       block_indices_u32);
+
+    pointcloud_compressor::utils::ErrorAccumulator error_acc;
+    if (request->save_hdf5 && request->hdf5_output_path && request->hdf5_output_path[0] != '\0') {
+        std::string err;
+        if (!pointcloud_compressor::runtime::writeCompressedMap(request->hdf5_output_path,
+                                                                map_data,
+                                                                err)) {
+            error_acc.add(err);
+        }
+    }
+
+    if (request->save_raw_hdf5 && request->raw_hdf5_output_path &&
+        request->raw_hdf5_output_path[0] != '\0') {
+        std::string raw_errors;
+        if (!pointcloud_compressor::runtime::writeRawVoxelGrid(request->raw_hdf5_output_path,
+                                                               result,
+                                                               *request,
+                                                               impl->occupancy_buffer,
+                                                               raw_errors)) {
+            error_acc.add(raw_errors);
+        }
+    }
+
+    if (!error_acc.empty()) {
+        if (!impl->error_message.empty()) {
+            impl->error_message.append("; ");
+        }
+        impl->error_message.append(error_acc.str());
+    }
 
     if (!impl->error_message.empty()) {
         report.error_message = impl->error_message.c_str();
