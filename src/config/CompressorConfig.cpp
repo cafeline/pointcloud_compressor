@@ -126,24 +126,4 @@ CompressionSettings settingsFromConfig(const CompressorConfig& config) {
     return settings;
 }
 
-PCCCompressionRequest toCompressionRequest(const CompressorConfig& config,
-                                           const CompressionSettings& settings) {
-    PCCCompressionRequest request{};
-    request.input_file = config.input_file.c_str();
-    request.voxel_size = static_cast<double>(settings.voxel_size);
-    request.block_size = settings.block_size;
-    request.use_8bit_indices = settings.use_8bit_indices;
-    request.min_points_threshold = settings.min_points_threshold;
-    request.save_hdf5 = config.save_hdf5;
-    request.hdf5_output_path = (config.save_hdf5 && !config.hdf5_output_file.empty())
-                                   ? config.hdf5_output_file.c_str()
-                                   : nullptr;
-    request.save_raw_hdf5 = config.save_raw_hdf5;
-    request.raw_hdf5_output_path = (config.save_raw_hdf5 && !config.raw_hdf5_output_file.empty())
-                                       ? config.raw_hdf5_output_file.c_str()
-                                       : nullptr;
-    request.bounding_box_margin_ratio = settings.bounding_box_margin_ratio;
-    return request;
-}
-
 }  // namespace pointcloud_compressor::config

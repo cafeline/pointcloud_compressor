@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "pointcloud_compressor/config/CompressorConfig.hpp"
+#include "pointcloud_compressor/config/ConfigTransforms.hpp"
 #include "pointcloud_compressor/msg/pattern_dictionary.hpp"
 
 extern "C" {
@@ -159,19 +160,18 @@ private:
         }
     }
 
-    PCCCompressionRequest buildCompressionRequest() const {
-        PCCCompressionRequest request{};
-        request.input_file = input_file_.c_str();
-        request.voxel_size = voxel_size_;
-        request.block_size = block_size_;
-        request.use_8bit_indices = use_8bit_indices_;
-        request.min_points_threshold = min_points_threshold_;
-        request.save_hdf5 = save_hdf5_;
-        request.hdf5_output_path = save_hdf5_ ? hdf5_output_file_.c_str() : nullptr;
-        request.save_raw_hdf5 = save_raw_hdf5_;
-        request.raw_hdf5_output_path = save_raw_hdf5_ ? raw_hdf5_output_file_.c_str() : nullptr;
-        request.bounding_box_margin_ratio = bounding_box_margin_ratio_;
-        return request;
+    pointcloud_compressor::config::CompressorConfig configFromParameters() const {
+        pointcloud_compressor::config::CompressorConfig config;
+        config.input_file = input_file_;
+        config.voxel_size = voxel_size_;
+        config.block_size = block_size_;
+        config.min_points_threshold = min_points_threshold_;
+        config.publish_occupied_voxel_markers = publish_occupied_voxel_markers_;
+        config.save_hdf5 = save_hdf5_;
+        config.hdf5_output_file = hdf5_output_file_;
+        config.save_raw_hdf5 = save_raw_hdf5_;
+        config.raw_hdf5_output_file = raw_hdf5_output_file_;
+        return config;
     }
 
     void compressAndPublish() {
@@ -180,8 +180,16 @@ private:
             return;
         }
 
-        auto request = buildCompressionRequest();
-        auto report = pcc_runtime_compress(runtime_handle_, &request);
+        auto setup = pointcloud_compressor::config::buildCompressionSetup(configFromParameters());
+        auto errors = pointcloud_compressor::config::validateForRuntime(setup);
+        if (!errors.empty()) {
+            for (const auto& err : errors) {
+                RCLCPP_ERROR(get_logger(), "%s", err.c_str());
+            }
+            return;
+        }
+
+        auto report = pcc_runtime_compress(runtime_handle_, &setup.request);
 
         if (!report.success) {
             const char* message = report.error_message ? report.error_message : "Unknown error";

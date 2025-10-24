@@ -6,6 +6,7 @@
 #include "pointcloud_compressor/config/CompressorConfig.hpp"
 #include "pointcloud_compressor/runtime/RuntimeHelpers.hpp"
 #include "pointcloud_compressor/runtime/CompressionReportBuilder.hpp"
+#include "pointcloud_compressor/config/ConfigTransforms.hpp"
 
 using pointcloud_compressor::CompressionResult;
 using pointcloud_compressor::CompressedMapData;
@@ -29,7 +30,7 @@ PCCCompressionRequest makeRequest() {
     config.save_hdf5 = false;
     config.save_raw_hdf5 = false;
 
-    return pointcloud_compressor::config::toCompressionRequest(config, settings);
+    return pointcloud_compressor::config::buildCompressionSetup(config).request;
 }
 
 }  // namespace

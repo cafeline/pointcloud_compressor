@@ -41,8 +41,6 @@ CompressorConfig loadCompressorConfigFromYaml(const std::string& path);
 BlockSizeOptimizationConfig loadBlockSizeOptimizationConfigFromYaml(const std::string& path);
 
 pointcloud_compressor::CompressionSettings settingsFromConfig(const CompressorConfig& config);
-PCCCompressionRequest toCompressionRequest(const CompressorConfig& config,
-                                           const pointcloud_compressor::CompressionSettings& settings);
 
 }  // namespace pointcloud_compressor::config
 

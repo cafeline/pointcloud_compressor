@@ -54,6 +54,7 @@ set(CORE_SOURCES
   src/core/BlockSizeReportFormatter.cpp
   src/config/CompressorConfig.cpp
   src/config/CliConfigParser.cpp
+  src/config/ConfigTransforms.cpp
 )
 
 # Create core library
@@ -267,6 +268,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_hdf5_writers test/test_hdf5_writers.cpp)
   target_link_libraries(test_hdf5_writers ${PROJECT_NAME}_runtime)
+
+  ament_add_gtest(test_config_transforms test/test_config_transforms.cpp)
+  target_link_libraries(test_config_transforms ${PROJECT_NAME}_core)
 endif()
 
 # Export dependencies

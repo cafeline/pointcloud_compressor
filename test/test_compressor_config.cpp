@@ -7,15 +7,20 @@
 #include <fstream>
 
 #include "pointcloud_compressor/config/CompressorConfig.hpp"
+#include "pointcloud_compressor/config/ConfigTransforms.hpp"
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
+
 #include "pointcloud_compressor/runtime/RuntimeAPI.hpp"
 
 using pointcloud_compressor::CompressionSettings;
 using pointcloud_compressor::config::BlockSizeOptimizationConfig;
 using pointcloud_compressor::config::CompressorConfig;
+using pointcloud_compressor::config::CompressionSetup;
+using pointcloud_compressor::config::buildCompressionSetup;
 using pointcloud_compressor::config::loadBlockSizeOptimizationConfigFromYaml;
 using pointcloud_compressor::config::loadCompressorConfigFromYaml;
 using pointcloud_compressor::config::settingsFromConfig;
+using pointcloud_compressor::config::validateForRuntime;
 
 namespace {
 
@@ -148,9 +153,15 @@ TEST(CompressorConfigTest, BlockSizeOptimizationValidationChecksRanges) {
     EXPECT_NE(errors[0].find("step_size"), std::string::npos);
 }
 
-TEST(CompressorConfigTest, ToCompressionRequestPopulatesFields) {
+TEST(CompressorConfigTest, BuildCompressionSetupAndValidate) {
+    const auto tmp_input = writeTempYaml("input");
+    {
+        std::ofstream ofs(tmp_input, std::ios::binary | std::ios::trunc);
+        ofs << "dummy";
+    }
+
     CompressorConfig config;
-    config.input_file = "/tmp/file.pcd";
+    config.input_file = tmp_input;
     config.voxel_size = 0.05;
     config.block_size = 6;
     config.min_points_threshold = 3;
@@ -159,14 +170,17 @@ TEST(CompressorConfigTest, ToCompressionRequestPopulatesFields) {
     config.save_raw_hdf5 = true;
     config.raw_hdf5_output_file = "/tmp/raw.h5";
 
-    auto settings = settingsFromConfig(config);
-    auto request = toCompressionRequest(config, settings);
+    auto baseline = config.validate(false);
+    EXPECT_TRUE(baseline.empty());
 
-    EXPECT_STREQ(config.input_file.c_str(), request.input_file);
-    EXPECT_NEAR(config.voxel_size, request.voxel_size, 1e-6);
-    EXPECT_EQ(config.block_size, request.block_size);
-    EXPECT_TRUE(request.save_hdf5);
-    EXPECT_STREQ(config.hdf5_output_file.c_str(), request.hdf5_output_path);
-    EXPECT_TRUE(request.save_raw_hdf5);
-    EXPECT_STREQ(config.raw_hdf5_output_file.c_str(), request.raw_hdf5_output_path);
+    auto setup = buildCompressionSetup(config);
+    auto errors = validateForRuntime(setup);
+    EXPECT_TRUE(errors.empty());
+    EXPECT_STREQ(config.input_file.c_str(), setup.request.input_file);
+    EXPECT_NEAR(config.voxel_size, setup.request.voxel_size, 1e-6);
+    EXPECT_EQ(config.block_size, setup.request.block_size);
+    EXPECT_TRUE(setup.request.save_hdf5);
+    EXPECT_STREQ(config.hdf5_output_file.c_str(), setup.request.hdf5_output_path);
+    EXPECT_TRUE(setup.request.save_raw_hdf5);
+    EXPECT_STREQ(config.raw_hdf5_output_file.c_str(), setup.request.raw_hdf5_output_path);
 }
