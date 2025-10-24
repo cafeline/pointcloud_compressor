@@ -8,6 +8,8 @@
 #include <std_srvs/srv/trigger.hpp>
 #include <filesystem>
 #include <iomanip>
+#include "pointcloud_compressor/config/CompressorConfig.hpp"
+#include "pointcloud_compressor/core/BlockSizeReportFormatter.hpp"
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/core/VoxelProcessor.hpp"
 #include "pointcloud_compressor/io/PcdIO.hpp"
@@ -20,6 +22,7 @@ public:
     BlockSizeOptimizerNode() : Node("block_size_optimizer") {
         // Declare parameters with defaults
         this->declare_parameter<std::string>("input_file", "");
+        this->declare_parameter<std::string>("config_file", "");
         this->declare_parameter<int>("min_block_size", 4);
         this->declare_parameter<int>("max_block_size", 32);
         this->declare_parameter<int>("step_size", 1);
@@ -44,20 +47,45 @@ public:
         auto_compress_ = this->get_parameter("auto_compress").as_bool();
         output_prefix_ = this->get_parameter("output_prefix").as_string();
         run_once_ = this->get_parameter("run_once").as_bool();
-        
+
+        const std::string config_path = this->get_parameter("config_file").as_string();
+        if (!config_path.empty()) {
+            try {
+                auto config = config::loadBlockSizeOptimizationConfigFromYaml(config_path);
+                if (!config.base.input_file.empty()) {
+                    input_file_ = config.base.input_file;
+                }
+                voxel_size_ = config.base.voxel_size;
+                min_block_size_ = config.min_block_size;
+                max_block_size_ = config.max_block_size;
+                step_size_ = config.step_size;
+                auto_compress_ = config.auto_compress;
+                verbose_ = config.verbose;
+            } catch (const std::exception& e) {
+                RCLCPP_ERROR(this->get_logger(), "Failed to load config file '%s': %s",
+                             config_path.c_str(), e.what());
+            }
+        }
+
+        config::BlockSizeOptimizationConfig effective_config;
+        effective_config.base.input_file = input_file_;
+        effective_config.base.voxel_size = voxel_size_;
+        effective_config.min_block_size = min_block_size_;
+        effective_config.max_block_size = max_block_size_;
+        effective_config.step_size = step_size_;
+        effective_config.auto_compress = auto_compress_;
+        effective_config.verbose = verbose_;
+
+        auto errors = effective_config.validate(true);
+        if (!errors.empty()) {
+            for (const auto& err : errors) {
+                RCLCPP_ERROR(this->get_logger(), "%s", err.c_str());
+            }
+            rclcpp::shutdown();
+            return;
+        }
+
         // Validate input file
-        if (input_file_.empty()) {
-            RCLCPP_ERROR(this->get_logger(), "No input file specified!");
-            rclcpp::shutdown();
-            return;
-        }
-        
-        if (!std::filesystem::exists(input_file_)) {
-            RCLCPP_ERROR(this->get_logger(), "Input file does not exist: %s", input_file_.c_str());
-            rclcpp::shutdown();
-            return;
-        }
-        
         // Initialize compressor
         CompressionSettings settings(voxel_size_, 8);
         compressor_ = std::make_unique<PointCloudCompressor>(settings);
@@ -97,7 +125,8 @@ private:
             input_file_, min_block_size_, max_block_size_, step_size_, verbose_);
         
         auto end_time = this->now();
-        auto duration = (end_time - start_time).seconds();
+        (void)start_time;
+        (void)end_time;
         
         // Check if optimization was successful
         if (result.optimal_block_size < 0) {
@@ -114,16 +143,10 @@ private:
             return;
         }
         
-        // Log results
-        RCLCPP_INFO(this->get_logger(), 
-                   "=== Optimization Results ===");
-        RCLCPP_INFO(this->get_logger(), 
-                   "Optimal block size: %d", result.optimal_block_size);
-        RCLCPP_INFO(this->get_logger(), 
-                   "Best compression ratio: %.6f", result.best_compression_ratio);
-        RCLCPP_INFO(this->get_logger(), 
-                   "Optimization time: %.2f ms (ROS timer: %.2f s)", 
-                   result.optimization_time_ms, duration);
+        auto summary = formatBlockSizeSummary(result, verbose_);
+        for (const auto& line : {std::string("=== Optimization Results ==="), summary}) {
+            RCLCPP_INFO(this->get_logger(), "%s", line.c_str());
+        }
         
         // Store last result for analysis
         last_result_ = result;
@@ -374,12 +397,14 @@ private:
                 // Estimate codebook and index sizes based on optimal block size
                 int optimal_bs = last_result_.optimal_block_size;
                 size_t pattern_bytes = (optimal_bs * optimal_bs * optimal_bs + 7) / 8;
+                (void)pattern_bytes;
                 
                 // Estimate from grid
                 int x_blocks = (dims.x + optimal_bs - 1) / optimal_bs;
                 int y_blocks = (dims.y + optimal_bs - 1) / optimal_bs;
                 int z_blocks = (dims.z + optimal_bs - 1) / optimal_bs;
                 size_t total_blocks = x_blocks * y_blocks * z_blocks;
+                (void)total_blocks;
                 
                 // Rough estimate of codebook vs index split (typical: 20% codebook, 80% index)
                 size_t estimated_codebook = best_compressed_size * 0.2;

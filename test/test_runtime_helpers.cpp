@@ -3,29 +3,33 @@
 
 #include <gtest/gtest.h>
 
+#include "pointcloud_compressor/config/CompressorConfig.hpp"
 #include "pointcloud_compressor/runtime/RuntimeHelpers.hpp"
+#include "pointcloud_compressor/runtime/CompressionReportBuilder.hpp"
 
 using pointcloud_compressor::CompressionResult;
 using pointcloud_compressor::CompressedMapData;
 using pointcloud_compressor::VoxelGrid;
+using pointcloud_compressor::runtime::CompressionReportBuilder;
 using pointcloud_compressor::runtime::bitWidthFromMaxIndex;
 using pointcloud_compressor::runtime::convertBlockIndicesToU32;
-using pointcloud_compressor::runtime::populateCompressedMapData;
 
 namespace {
 
 PCCCompressionRequest makeRequest() {
-    PCCCompressionRequest req{};
-    req.voxel_size = 0.05;
-    req.block_size = 2;
-    req.use_8bit_indices = false;
-    req.min_points_threshold = 1;
-    req.save_hdf5 = false;
-    req.hdf5_output_path = nullptr;
-    req.save_raw_hdf5 = false;
-    req.raw_hdf5_output_path = nullptr;
-    req.bounding_box_margin_ratio = 0.0;
-    return req;
+    pointcloud_compressor::CompressionSettings settings;
+    settings.voxel_size = 0.05f;
+    settings.block_size = 2;
+    settings.min_points_threshold = 1;
+
+    pointcloud_compressor::config::CompressorConfig config;
+    config.voxel_size = 0.05;
+    config.block_size = 2;
+    config.min_points_threshold = 1;
+    config.save_hdf5 = false;
+    config.save_raw_hdf5 = false;
+
+    return pointcloud_compressor::config::toCompressionRequest(config, settings);
 }
 
 }  // namespace
@@ -58,8 +62,8 @@ TEST(RuntimeHelpersTest, PopulateCompressedMapDataUsesMaxIndex) {
     std::vector<uint8_t> dictionary_buffer = {0xAA, 0xBB};
     std::vector<uint32_t> block_indices_u32 = convertBlockIndicesToU32(result.block_indices);
 
-    CompressedMapData data;
-    populateCompressedMapData(result, request, dictionary_buffer, block_indices_u32, data);
+    CompressionReportBuilder builder;
+    auto data = builder.toCompressedMapData(result, request, dictionary_buffer, block_indices_u32);
 
     EXPECT_EQ(bitWidthFromMaxIndex(result.max_index), data.block_index_bit_width);
     EXPECT_EQ(dictionary_buffer.size(), data.dictionary_patterns.size());

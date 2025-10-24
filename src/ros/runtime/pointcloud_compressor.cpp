@@ -6,6 +6,8 @@
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/io/HDF5IO.hpp"
 #include "pointcloud_compressor/runtime/CompressionArtifacts.hpp"
+#include "pointcloud_compressor/runtime/CompressionReportBuilder.hpp"
+#include "pointcloud_compressor/runtime/Hdf5Writers.hpp"
 #include "pointcloud_compressor/runtime/RuntimeHelpers.hpp"
 #include "pointcloud_compressor/runtime/TempFileManager.hpp"
 
@@ -58,104 +60,6 @@ PCCCompressionReport makeErrorReport(RuntimeHandle* impl, const std::string& mes
     return report;
 }
 
-void populateRawHdf5Data(const CompressionResult& result,
-                         const PCCCompressionRequest& request,
-                         HDF5IO::RawVoxelGridData& raw_data,
-                         std::vector<uint8_t>& occupancy_buffer) {
-    const auto dims = result.voxel_grid.getDimensions();
-    raw_data.dim_x = static_cast<uint32_t>(dims.x);
-    raw_data.dim_y = static_cast<uint32_t>(dims.y);
-    raw_data.dim_z = static_cast<uint32_t>(dims.z);
-    raw_data.voxel_size = static_cast<float>(request.voxel_size);
-
-    float origin_x = 0.0f;
-    float origin_y = 0.0f;
-    float origin_z = 0.0f;
-    result.voxel_grid.getOrigin(origin_x, origin_y, origin_z);
-    raw_data.origin = {origin_x, origin_y, origin_z};
-
-    raw_data.voxel_values.clear();
-    raw_data.voxel_values.reserve(occupancy_buffer.size());
-    for (uint8_t value : occupancy_buffer) {
-        raw_data.voxel_values.push_back(value ? 255u : 0u);
-    }
-
-    raw_data.occupied_voxels.clear();
-    raw_data.occupied_voxels.reserve(result.voxel_grid.getOccupiedVoxelCount());
-
-    std::size_t index = 0;
-    for (uint32_t z = 0; z < raw_data.dim_z; ++z) {
-        for (uint32_t y = 0; y < raw_data.dim_y; ++y) {
-            for (uint32_t x = 0; x < raw_data.dim_x; ++x, ++index) {
-                if (index < occupancy_buffer.size() && occupancy_buffer[index]) {
-                    raw_data.occupied_voxels.push_back(
-                        {static_cast<int32_t>(x),
-                         static_cast<int32_t>(y),
-                         static_cast<int32_t>(z)});
-                }
-            }
-        }
-    }
-}
-
-PCCCompressionReport buildSuccessReport(RuntimeHandle* impl,
-                                        const CompressionResult& result,
-                                        const PCCCompressionRequest& request) {
-    PCCCompressionReport report = makeEmptyReport();
-    report.success = true;
-
-    impl->dictionary_buffer = pointcloud_compressor::runtime::flattenDictionaryPatterns(result.pattern_dictionary);
-    impl->indices_buffer = pointcloud_compressor::runtime::packBlockIndices(
-        result.block_indices, static_cast<uint8_t>(result.index_bit_size));
-    impl->occupancy_buffer = pointcloud_compressor::runtime::buildOccupancyMask(result.voxel_grid);
-
-    report.dictionary.num_patterns = static_cast<uint32_t>(result.pattern_dictionary.size());
-    const uint32_t pattern_bits = static_cast<uint32_t>(request.block_size) *
-                                  static_cast<uint32_t>(request.block_size) *
-                                  static_cast<uint32_t>(request.block_size);
-    report.dictionary.pattern_size_bytes = (pattern_bits + 7) / 8;
-    report.dictionary.size = impl->dictionary_buffer.size();
-    report.dictionary.data = impl->dictionary_buffer.empty() ? nullptr : impl->dictionary_buffer.data();
-
-    report.indices.data = impl->indices_buffer.empty() ? nullptr : impl->indices_buffer.data();
-    report.indices.size = impl->indices_buffer.size();
-    report.indices.index_bit_size = static_cast<uint8_t>(result.index_bit_size);
-    report.indices.total_blocks = static_cast<uint32_t>(result.num_blocks);
-
-    report.grid.dimensions[0] = result.grid_dimensions.x;
-    report.grid.dimensions[1] = result.grid_dimensions.y;
-    report.grid.dimensions[2] = result.grid_dimensions.z;
-    report.grid.origin[0] = result.grid_origin.x;
-    report.grid.origin[1] = result.grid_origin.y;
-    report.grid.origin[2] = result.grid_origin.z;
-    report.grid.blocks_per_axis[0] = static_cast<uint32_t>(result.blocks_count.x);
-    report.grid.blocks_per_axis[1] = static_cast<uint32_t>(result.blocks_count.y);
-    report.grid.blocks_per_axis[2] = static_cast<uint32_t>(result.blocks_count.z);
-    report.grid.voxel_size = request.voxel_size;
-
-    report.occupancy.occupancy = impl->occupancy_buffer.empty() ? nullptr : impl->occupancy_buffer.data();
-    report.occupancy.size = impl->occupancy_buffer.size();
-    report.occupancy.dimensions[0] = static_cast<uint32_t>(result.voxel_grid.getDimensions().x);
-    report.occupancy.dimensions[1] = static_cast<uint32_t>(result.voxel_grid.getDimensions().y);
-    report.occupancy.dimensions[2] = static_cast<uint32_t>(result.voxel_grid.getDimensions().z);
-    float origin_x = 0.0f;
-    float origin_y = 0.0f;
-    float origin_z = 0.0f;
-    result.voxel_grid.getOrigin(origin_x, origin_y, origin_z);
-    report.occupancy.origin[0] = origin_x;
-    report.occupancy.origin[1] = origin_y;
-    report.occupancy.origin[2] = origin_z;
-
-    report.statistics.compression_ratio = result.compression_ratio;
-    report.statistics.original_point_count = static_cast<uint32_t>(result.point_count);
-    report.statistics.compressed_data_size = static_cast<uint32_t>(result.compressed_size);
-
-    report.max_index = result.max_index;
-    report.error_message = nullptr;
-    impl->error_message.clear();
-    return report;
-}
-
 void maybeWriteCompressedMap(const CompressionResult& result,
                              const PCCCompressionRequest& request,
                              RuntimeHandle* impl,
@@ -167,18 +71,16 @@ void maybeWriteCompressedMap(const CompressionResult& result,
     const auto block_indices_u32 =
         pointcloud_compressor::runtime::convertBlockIndicesToU32(result.block_indices);
 
-    pointcloud_compressor::CompressedMapData data;
-    pointcloud_compressor::runtime::populateCompressedMapData(
-        result, request, dictionary_buffer, block_indices_u32, data);
+    pointcloud_compressor::runtime::CompressionReportBuilder builder;
+    auto data = builder.toCompressedMapData(result, request, dictionary_buffer, block_indices_u32);
 
-    HDF5IO hdf5_io;
-    if (!hdf5_io.write(request.hdf5_output_path, data)) {
+    std::string error;
+    if (!pointcloud_compressor::runtime::writeCompressedMap(request.hdf5_output_path, data, error)) {
         if (impl) {
             if (!impl->error_message.empty()) {
                 impl->error_message.append("; ");
             }
-            impl->error_message.append("HDF5 write failed: ");
-            impl->error_message.append(hdf5_io.getLastError());
+            impl->error_message.append(error);
         }
     }
 }
@@ -192,16 +94,13 @@ void maybeWriteRawGrid(const CompressionResult& result,
         return;
     }
 
-    HDF5IO hdf5_io;
-    HDF5IO::RawVoxelGridData raw;
-    populateRawHdf5Data(result, request, raw, occupancy_buffer);
-    if (!hdf5_io.writeRawVoxelGrid(request.raw_hdf5_output_path, raw)) {
+    std::string error;
+    if (!pointcloud_compressor::runtime::writeRawVoxelGrid(request.raw_hdf5_output_path, result, request, occupancy_buffer, error)) {
         if (impl) {
             if (!impl->error_message.empty()) {
                 impl->error_message.append("; ");
             }
-            impl->error_message.append("Raw HDF5 write failed: ");
-            impl->error_message.append(hdf5_io.getLastError());
+            impl->error_message.append(error);
         }
     }
 }
@@ -298,7 +197,12 @@ extern "C" PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
                                      : result.error_message);
     }
 
-    auto report = buildSuccessReport(impl, result, *request);
+    pointcloud_compressor::runtime::CompressionReportBuilder report_builder;
+    auto report = report_builder.build(result, *request,
+                                       impl->dictionary_buffer,
+                                       impl->indices_buffer,
+                                       impl->occupancy_buffer,
+                                       impl->error_message);
 
     maybeWriteCompressedMap(result, *request, impl, impl->dictionary_buffer);
     maybeWriteRawGrid(result, *request, impl, impl->occupancy_buffer);

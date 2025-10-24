@@ -51,7 +51,9 @@ set(CORE_SOURCES
   src/core/PatternDictionaryBuilder.cpp
   src/core/PatternEncoder.cpp
   src/core/PointCloudCompressor.cpp
+  src/core/BlockSizeReportFormatter.cpp
   src/config/CompressorConfig.cpp
+  src/config/CliConfigParser.cpp
 )
 
 # Create core library
@@ -66,6 +68,8 @@ add_library(${PROJECT_NAME}_runtime
   src/ros/runtime/pointcloud_compressor.cpp
   src/ros/runtime/RuntimeHelpers.cpp
   src/ros/runtime/CompressionArtifacts.cpp
+  src/ros/runtime/CompressionReportBuilder.cpp
+  src/ros/runtime/Hdf5Writers.cpp
   src/ros/runtime/TempFileManager.cpp
 )
 target_link_libraries(${PROJECT_NAME}_runtime PUBLIC ${PROJECT_NAME}_core)
@@ -251,6 +255,18 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_compressor_config test/test_compressor_config.cpp)
   target_link_libraries(test_compressor_config ${PROJECT_NAME}_core)
+
+  ament_add_gtest(test_runtime_report_builder test/test_runtime_report_builder.cpp)
+  target_link_libraries(test_runtime_report_builder ${PROJECT_NAME}_runtime)
+
+  ament_add_gtest(test_cli_config_parser test/test_cli_config_parser.cpp)
+  target_link_libraries(test_cli_config_parser ${PROJECT_NAME}_core)
+
+  ament_add_gtest(test_block_size_report_formatter test/test_block_size_report_formatter.cpp)
+  target_link_libraries(test_block_size_report_formatter ${PROJECT_NAME}_core)
+
+  ament_add_gtest(test_hdf5_writers test/test_hdf5_writers.cpp)
+  target_link_libraries(test_hdf5_writers ${PROJECT_NAME}_runtime)
 endif()
 
 # Export dependencies
