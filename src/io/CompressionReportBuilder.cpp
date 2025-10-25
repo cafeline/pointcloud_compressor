@@ -3,6 +3,7 @@
 
 #include "pointcloud_compressor/io/CompressionReportBuilder.hpp"
 
+#include "pointcloud_compressor/io/HDF5IO.hpp"
 #include "pointcloud_compressor/runtime/CompressionArtifacts.hpp"
 #include "pointcloud_compressor/runtime/RuntimeHelpers.hpp"
 

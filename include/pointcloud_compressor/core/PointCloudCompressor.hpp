@@ -9,26 +9,20 @@
 #include <optional>
 #include <map>
 #include "pointcloud_compressor/io/PointCloudIO.hpp"
-#include "pointcloud_compressor/io/HDF5IO.hpp"
 #include "pointcloud_compressor/core/VoxelProcessor.hpp"
 #include "pointcloud_compressor/core/PatternDictionaryBuilder.hpp"
-#include "pointcloud_compressor/core/PatternEncoder.hpp"
 
 namespace pointcloud_compressor {
 
 struct CompressionSettings {
     float voxel_size = 0.01f;
     int block_size = 8;
-    bool use_8bit_indices = false;  // Deprecated, kept for compatibility
-    int index_bit_size = 0;  // 0=auto, 8, 16, 32, 64
     int min_points_threshold = 1;
-    std::string temp_directory = "temp";
     float bounding_box_margin_ratio = 0.0f;
 
     CompressionSettings() = default;
-    CompressionSettings(float vs, int bs, bool use8bit = false, int min_pts = 1, float margin_ratio = 0.2f)
-        : voxel_size(vs), block_size(bs), use_8bit_indices(use8bit),
-          index_bit_size(use8bit ? 8 : 0), min_points_threshold(min_pts),
+    CompressionSettings(float vs, int bs, bool /*unused*/ = false, int min_pts = 1, float margin_ratio = 0.2f)
+        : voxel_size(vs), block_size(bs), min_points_threshold(min_pts),
           bounding_box_margin_ratio(margin_ratio) {}
 };
 
@@ -48,7 +42,6 @@ struct CompressionResult {
         double load_ms = 0.0;
         double voxelize_ms = 0.0;
         double dictionary_ms = 0.0;
-        double save_ms = 0.0;
         double total_ms = 0.0;
     } timings;
 
@@ -110,17 +103,7 @@ public:
     ~PointCloudCompressor();
 
     // Main compression function
-    CompressionResult compress(const std::string& input_file,
-                              const std::string& output_prefix);
-
-    // Main decompression function
-    bool decompress(const std::string& compressed_prefix,
-                   const std::string& output_file);
-
-    // Decompress to VoxelGrid (preserves exact grid structure)
-    bool decompressToGrid(const std::string& compressed_prefix,
-                         VoxelGrid& grid);
-
+    CompressionResult compress(const std::string& input_file);
 
     // Find optimal compression settings
     CompressionSettings findOptimalSettings(const std::string& input_file,
@@ -151,7 +134,6 @@ private:
     CompressionSettings settings_;
     std::unique_ptr<VoxelProcessor> voxel_processor_;
     std::unique_ptr<PatternDictionaryBuilder> dictionary_builder_;
-    std::unique_ptr<PatternEncoder> pattern_encoder_;
 
     // Cached voxel grid for reuse
     mutable std::optional<VoxelGrid> cached_voxel_grid_;
@@ -164,30 +146,6 @@ private:
                                    VoxelGrid& grid);
     bool buildDictionaryAndEncode(const std::vector<VoxelBlock>& blocks,
                                  std::vector<uint64_t>& indices);
-    bool saveCompressionData(const std::string& output_prefix,
-                           const std::vector<uint64_t>& indices,
-                           const VoxelGrid& grid,
-                           int index_bit_size = 16);
-
-    // Internal decompression steps
-    bool loadCompressionData(const std::string& compressed_prefix,
-                           std::vector<uint64_t>& indices,
-                           VoxelGrid& grid);
-    bool reconstructPointCloud(const std::vector<uint64_t>& indices,
-                             const VoxelGrid& grid,
-                             PointCloud& cloud);
-    bool reconstructVoxelGrid(const std::vector<uint64_t>& indices,
-                            const VoxelGrid& metadata_grid,
-                            VoxelGrid& reconstructed_grid);
-
-    // File management
-    void initializeTempPaths(const std::string& output_prefix);
-    void cleanupTempFiles();
-
-    std::string getBlocksFilename(const std::string& prefix) const;
-    std::string getDictionaryFilename(const std::string& prefix) const;
-    std::string getIndicesFilename(const std::string& prefix) const;
-    std::string getMetadataFilename(const std::string& prefix) const;
 };
 
 } // namespace pointcloud_compressor

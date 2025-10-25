@@ -10,6 +10,10 @@
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/runtime/RuntimeAPI.hpp"
 
+namespace pointcloud_compressor {
+struct CompressedMapData;
+}
+
 namespace pointcloud_compressor::io {
 
 bool writeCompressedMap(const std::string& output_path,

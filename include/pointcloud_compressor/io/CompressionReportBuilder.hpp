@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
+#include "pointcloud_compressor/io/HDF5IO.hpp"
 #include "pointcloud_compressor/runtime/RuntimeAPI.hpp"
 
 namespace pointcloud_compressor::io {

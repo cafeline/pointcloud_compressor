@@ -288,19 +288,8 @@ private:
         optimal_settings.block_size = optimal_block_size;
         compressor_->updateSettings(optimal_settings);
         
-        // Determine output prefix
-        std::string prefix = output_prefix_;
-        if (prefix.empty()) {
-            prefix = input_file_;
-            size_t dot_pos = prefix.find_last_of('.');
-            if (dot_pos != std::string::npos) {
-                prefix = prefix.substr(0, dot_pos);
-            }
-            prefix += "_optimized";
-        }
-        
         // Perform compression
-        auto compress_result = compressor_->compress(input_file_, prefix);
+        auto compress_result = compressor_->compress(input_file_);
         
         if (compress_result.success) {
             RCLCPP_INFO(this->get_logger(), "Compression successful!");
@@ -310,8 +299,6 @@ private:
                        "Compressed size: %zu bytes", compress_result.compressed_size);
             RCLCPP_INFO(this->get_logger(), 
                        "Compression ratio: %.6f", compress_result.compression_ratio);
-            RCLCPP_INFO(this->get_logger(), 
-                       "Output files: %s.*", prefix.c_str());
         } else {
             RCLCPP_ERROR(this->get_logger(), 
                         "Compression failed: %s", compress_result.error_message.c_str());

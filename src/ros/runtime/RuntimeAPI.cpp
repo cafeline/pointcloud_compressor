@@ -4,15 +4,14 @@
 #include "pointcloud_compressor/runtime/RuntimeAPI.hpp"
 
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
-#include "pointcloud_compressor/runtime/CompressionArtifacts.hpp"
 #include "pointcloud_compressor/io/CompressionReportBuilder.hpp"
+#include "pointcloud_compressor/io/HDF5IO.hpp"
 #include "pointcloud_compressor/io/Hdf5Writers.hpp"
+#include "pointcloud_compressor/runtime/CompressionArtifacts.hpp"
 #include "pointcloud_compressor/runtime/RuntimeHelpers.hpp"
-#include "pointcloud_compressor/runtime/TempFileManager.hpp"
 #include "pointcloud_compressor/utils/ErrorAccumulator.hpp"
 
 #include <algorithm>
-#include <filesystem>
 #include <memory>
 #include <string>
 #include <utility>
@@ -114,31 +113,14 @@ extern "C" PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
     CompressionSettings settings;
     settings.voxel_size = static_cast<float>(request->voxel_size);
     settings.block_size = request->block_size;
-    settings.use_8bit_indices = request->use_8bit_indices;
-    settings.index_bit_size = request->use_8bit_indices ? 8 : 0;
     settings.min_points_threshold = request->min_points_threshold;
     settings.bounding_box_margin_ratio = static_cast<float>(request->bounding_box_margin_ratio);
 
-    const auto temp_root = std::filesystem::temp_directory_path().string();
-    settings.temp_directory = temp_root;
     impl->compressor->updateSettings(settings);
-
-    pointcloud_compressor::runtime::TempFileManager temp_manager;
-    const auto temp_prefix = temp_manager.createTemporaryPrefix(temp_root);
-
-    struct CleanupGuard {
-        pointcloud_compressor::runtime::TempFileManager* manager;
-        std::string prefix;
-        ~CleanupGuard() {
-            if (manager) {
-                manager->cleanupArtifacts(prefix);
-            }
-        }
-    } cleanup_guard{&temp_manager, temp_prefix};
 
     CompressionResult result;
     try {
-        result = impl->compressor->compress(request->input_file, temp_prefix);
+        result = impl->compressor->compress(request->input_file);
     } catch (const std::exception& e) {
         return makeErrorReport(impl, std::string("Compression threw exception: ") + e.what());
     } catch (...) {

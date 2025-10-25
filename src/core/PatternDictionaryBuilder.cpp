@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "pointcloud_compressor/core/PatternDictionaryBuilder.hpp"
-#include <fstream>
 #include <iostream>
 #include <algorithm>
 #include <chrono>
@@ -69,63 +68,6 @@ int PatternDictionaryBuilder::getRequiredIndexBitSize() const {
     }
 }
 
-bool PatternDictionaryBuilder::saveDictionary(const std::string& filename, int index_bit_size) const {
-    std::ofstream file(filename, std::ios::binary);
-    if (!file.is_open()) {
-        return false;
-    }
-    
-    // Write number of unique patterns
-    uint32_t num_patterns = static_cast<uint32_t>(unique_patterns_.size());
-    file.write(reinterpret_cast<const char*>(&num_patterns), sizeof(num_patterns));
-    
-    // Write patterns
-    for (const auto& pattern : unique_patterns_) {
-        uint32_t pattern_size = static_cast<uint32_t>(pattern.size());
-        file.write(reinterpret_cast<const char*>(&pattern_size), sizeof(pattern_size));
-        file.write(reinterpret_cast<const char*>(pattern.data()), pattern_size);
-    }
-    
-    return file.good();
-}
-
-bool PatternDictionaryBuilder::loadDictionary(const std::string& filename) {
-    std::ifstream file(filename, std::ios::binary);
-    if (!file.is_open()) {
-        return false;
-    }
-    
-    unique_patterns_.clear();
-    pattern_to_index_.clear();
-    
-    // Read number of patterns
-    uint32_t num_patterns;
-    file.read(reinterpret_cast<char*>(&num_patterns), sizeof(num_patterns));
-    
-    if (!file.good()) {
-        return false;
-    }
-    
-    // Read patterns
-    for (uint32_t i = 0; i < num_patterns; ++i) {
-        uint32_t pattern_size;
-        file.read(reinterpret_cast<char*>(&pattern_size), sizeof(pattern_size));
-        
-        std::vector<uint8_t> pattern(pattern_size);
-        file.read(reinterpret_cast<char*>(pattern.data()), pattern_size);
-        
-        if (!file.good()) {
-            return false;
-        }
-        
-        unique_patterns_.push_back(pattern);
-        pattern_to_index_[pattern] = static_cast<uint64_t>(i);
-        max_index_ = std::max(max_index_, static_cast<uint64_t>(i));
-    }
-    
-    return true;
-}
-
 size_t PatternDictionaryBuilder::getUniquePatternCount() const {
     return unique_patterns_.size();
 }
@@ -164,20 +106,6 @@ float PatternDictionaryBuilder::getCompressionRatio() const {
     }
     
     return static_cast<float>(compressed_bits) / static_cast<float>(original_bits);
-}
-
-void PatternDictionaryBuilder::setDictionary(const std::vector<std::vector<uint8_t>>& patterns) {
-    unique_patterns_ = patterns;
-    pattern_to_index_.clear();
-    pattern_indices_.clear();
-    max_index_ = 0;
-
-    uint64_t index = 0;
-    for (const auto& pattern : unique_patterns_) {
-        pattern_to_index_[pattern] = index;
-        max_index_ = index;
-        ++index;
-    }
 }
 
 } // namespace pointcloud_compressor

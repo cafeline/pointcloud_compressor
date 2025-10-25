@@ -8,7 +8,6 @@
 #include <cmath>
 #include <chrono>
 #include <filesystem>
-#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -24,13 +23,11 @@ PointCloudCompressor::PointCloudCompressor(const CompressionSettings& settings)
         settings_.min_points_threshold,
         settings_.bounding_box_margin_ratio);
     dictionary_builder_ = std::make_unique<PatternDictionaryBuilder>();
-    pattern_encoder_ = std::make_unique<PatternEncoder>();
 }
 
 PointCloudCompressor::~PointCloudCompressor() = default;
 
-CompressionResult PointCloudCompressor::compress(const std::string& input_file,
-                                                const std::string& output_prefix) {
+CompressionResult PointCloudCompressor::compress(const std::string& input_file) {
     CompressionResult result;
     result.input_file = input_file;
     result.voxel_size = settings_.voxel_size;
@@ -121,15 +118,6 @@ CompressionResult PointCloudCompressor::compress(const std::string& input_file,
         result.num_unique_patterns = dictionary_builder_->getUniquePatternCount();
         result.max_index = dictionary_builder_->getMaxIndex();
         result.index_bit_size = dictionary_builder_->getRequiredIndexBitSize();
-
-        auto save_start = std::chrono::high_resolution_clock::now();
-        if (!saveCompressionData(output_prefix, indices, grid, result.index_bit_size)) {
-            result.error_message = "Failed to save compressed data";
-            return result;
-        }
-        auto save_end = std::chrono::high_resolution_clock::now();
-        result.timings.save_ms =
-            std::chrono::duration<double, std::milli>(save_end - save_start).count();
 
         result.block_indices = indices;
         result.pattern_dictionary = dictionary_builder_->getUniquePatterns();
@@ -252,7 +240,6 @@ std::string CompressionResult::formatDetailedReport() const {
            << "  Index entries     : " << block_indices.size() << '\n'
            << "  Dictionary build  : " << formatMs(timings.dictionary_ms) << " ms\n"
            << "  Index bit width   : " << index_bit_size << "-bit\n"
-           << "  Save data         : " << formatMs(timings.save_ms) << " ms\n"
            << "  Total time        : " << formatMs(timings.total_ms) << " ms\n"
            << "  Compression ratio : " << formatRatio(compression_ratio) << '\n';
 
@@ -290,97 +277,6 @@ std::string CompressionResult::formatDetailedReport() const {
            << "  Memory reduction : " << formatPercent(memory_reduction) << "%";
 
     return report.str();
-}
-
-bool PointCloudCompressor::decompress(const std::string& compressed_prefix,
-                                      const std::string& output_file) {
-    try {
-        auto total_start = std::chrono::high_resolution_clock::now();
-
-        auto load_start = std::chrono::high_resolution_clock::now();
-        std::vector<uint64_t> indices;
-        VoxelGrid grid;
-        if (!loadCompressionData(compressed_prefix, indices, grid)) {
-            std::cerr << "Failed to load compression data" << std::endl;
-            return false;
-        }
-        auto load_end = std::chrono::high_resolution_clock::now();
-        auto load_time =
-            std::chrono::duration<double, std::milli>(load_end - load_start).count();
-        std::cout << "[PointCloudCompressor] Load compressed data: " << load_time << " ms" << std::endl;
-
-        auto reconstruct_start = std::chrono::high_resolution_clock::now();
-        PointCloud cloud;
-        if (!reconstructPointCloud(indices, grid, cloud)) {
-            std::cerr << "Failed to reconstruct point cloud" << std::endl;
-            return false;
-        }
-        auto reconstruct_end = std::chrono::high_resolution_clock::now();
-        auto reconstruct_time =
-            std::chrono::duration<double, std::milli>(reconstruct_end - reconstruct_start).count();
-        std::cout << "[PointCloudCompressor] Reconstruct point cloud: " << reconstruct_time << " ms ("
-                  << cloud.points.size() << " points)" << std::endl;
-
-        auto save_start = std::chrono::high_resolution_clock::now();
-        bool result = PointCloudIO::savePointCloud(output_file, cloud);
-        auto save_end = std::chrono::high_resolution_clock::now();
-        auto save_time =
-            std::chrono::duration<double, std::milli>(save_end - save_start).count();
-        std::cout << "[PointCloudCompressor] Save point cloud: " << save_time << " ms" << std::endl;
-
-        auto total_end = std::chrono::high_resolution_clock::now();
-        auto total_time =
-            std::chrono::duration<double, std::milli>(total_end - total_start).count();
-        std::cout << "[PointCloudCompressor] Total decompression time: " << total_time << " ms" << std::endl;
-
-        return result;
-
-    } catch (const std::exception& e) {
-        std::cerr << "Exception during decompression: " << e.what() << std::endl;
-        return false;
-    }
-}
-
-bool PointCloudCompressor::decompressToGrid(const std::string& compressed_prefix,
-                                            VoxelGrid& grid) {
-    try {
-        auto total_start = std::chrono::high_resolution_clock::now();
-
-        auto load_start = std::chrono::high_resolution_clock::now();
-        std::vector<uint64_t> indices;
-        VoxelGrid metadata_grid;
-        if (!loadCompressionData(compressed_prefix, indices, metadata_grid)) {
-            std::cerr << "Failed to load compression data" << std::endl;
-            return false;
-        }
-        auto load_end = std::chrono::high_resolution_clock::now();
-        auto load_time =
-            std::chrono::duration<double, std::milli>(load_end - load_start).count();
-        std::cout << "[PointCloudCompressor] Load compressed data: " << load_time << " ms" << std::endl;
-
-        auto reconstruct_start = std::chrono::high_resolution_clock::now();
-        if (!reconstructVoxelGrid(indices, metadata_grid, grid)) {
-            std::cerr << "Failed to reconstruct voxel grid" << std::endl;
-            return false;
-        }
-        auto reconstruct_end = std::chrono::high_resolution_clock::now();
-        auto reconstruct_time =
-            std::chrono::duration<double, std::milli>(reconstruct_end - reconstruct_start).count();
-        std::cout << "[PointCloudCompressor] Reconstruct voxel grid: "
-                  << reconstruct_time << " ms" << std::endl;
-
-        auto total_end = std::chrono::high_resolution_clock::now();
-        auto total_time =
-            std::chrono::duration<double, std::milli>(total_end - total_start).count();
-        std::cout << "[PointCloudCompressor] Total decomposition time: "
-                  << total_time << " ms" << std::endl;
-
-        return true;
-
-    } catch (const std::exception& e) {
-        std::cerr << "Exception during voxel grid reconstruction: " << e.what() << std::endl;
-        return false;
-    }
 }
 
 CompressionSettings PointCloudCompressor::findOptimalSettings(const std::string& input_file,
@@ -597,175 +493,6 @@ bool PointCloudCompressor::buildDictionaryAndEncode(const std::vector<VoxelBlock
     indices.assign(pattern_indices.begin(), pattern_indices.end());
 
     return true;
-}
-
-bool PointCloudCompressor::saveCompressionData(const std::string& output_prefix,
-                                               const std::vector<uint64_t>& indices,
-                                               const VoxelGrid& grid,
-                                               int index_bit_size) {
-    if (!dictionary_builder_->saveDictionary(getDictionaryFilename(output_prefix))) {
-        return false;
-    }
-
-    if (!pattern_encoder_->encodePatternsWithBitSize(indices,
-                                                     getIndicesFilename(output_prefix),
-                                                     index_bit_size)) {
-        return false;
-    }
-
-    std::ofstream meta_file(getMetadataFilename(output_prefix), std::ios::binary);
-    if (!meta_file.is_open()) {
-        return false;
-    }
-
-    meta_file.write(reinterpret_cast<const char*>(&settings_.voxel_size), sizeof(settings_.voxel_size));
-    meta_file.write(reinterpret_cast<const char*>(&settings_.block_size), sizeof(settings_.block_size));
-
-    VoxelCoord dims = grid.getDimensions();
-    meta_file.write(reinterpret_cast<const char*>(&dims.x), sizeof(dims.x));
-    meta_file.write(reinterpret_cast<const char*>(&dims.y), sizeof(dims.y));
-    meta_file.write(reinterpret_cast<const char*>(&dims.z), sizeof(dims.z));
-
-    float origin_x = 0.0f, origin_y = 0.0f, origin_z = 0.0f;
-    grid.getOrigin(origin_x, origin_y, origin_z);
-    meta_file.write(reinterpret_cast<const char*>(&origin_x), sizeof(origin_x));
-    meta_file.write(reinterpret_cast<const char*>(&origin_y), sizeof(origin_y));
-    meta_file.write(reinterpret_cast<const char*>(&origin_z), sizeof(origin_z));
-
-    return meta_file.good();
-}
-
-bool PointCloudCompressor::loadCompressionData(const std::string& compressed_prefix,
-                                               std::vector<uint64_t>& indices,
-                                               VoxelGrid& grid) {
-    if (!dictionary_builder_->loadDictionary(getDictionaryFilename(compressed_prefix))) {
-        return false;
-    }
-
-    if (!pattern_encoder_->decodePatterns(getIndicesFilename(compressed_prefix), indices)) {
-        return false;
-    }
-
-    std::ifstream meta_file(getMetadataFilename(compressed_prefix), std::ios::binary);
-    if (!meta_file.is_open()) {
-        return false;
-    }
-
-    float voxel_size = settings_.voxel_size;
-    int block_size = settings_.block_size;
-    meta_file.read(reinterpret_cast<char*>(&voxel_size), sizeof(voxel_size));
-    meta_file.read(reinterpret_cast<char*>(&block_size), sizeof(block_size));
-
-    int dim_x = 0, dim_y = 0, dim_z = 0;
-    meta_file.read(reinterpret_cast<char*>(&dim_x), sizeof(dim_x));
-    meta_file.read(reinterpret_cast<char*>(&dim_y), sizeof(dim_y));
-    meta_file.read(reinterpret_cast<char*>(&dim_z), sizeof(dim_z));
-
-    float origin_x = 0.0f, origin_y = 0.0f, origin_z = 0.0f;
-    meta_file.read(reinterpret_cast<char*>(&origin_x), sizeof(origin_x));
-    meta_file.read(reinterpret_cast<char*>(&origin_y), sizeof(origin_y));
-    meta_file.read(reinterpret_cast<char*>(&origin_z), sizeof(origin_z));
-
-    if (!meta_file.good()) {
-        return false;
-    }
-
-    grid.initialize(dim_x, dim_y, dim_z, voxel_size);
-    grid.setOrigin(origin_x, origin_y, origin_z);
-
-    settings_.voxel_size = voxel_size;
-    settings_.block_size = block_size;
-    voxel_processor_->setVoxelSize(voxel_size);
-    voxel_processor_->setBlockSize(block_size);
-
-    return true;
-}
-
-bool PointCloudCompressor::reconstructPointCloud(const std::vector<uint64_t>& indices,
-                                                 const VoxelGrid& grid,
-                                                 PointCloud& cloud) {
-    cloud.clear();
-
-    VoxelGrid reconstructed_grid;
-    if (!reconstructVoxelGrid(indices, grid, reconstructed_grid)) {
-        return false;
-    }
-
-    return voxel_processor_->reconstructPointCloud(reconstructed_grid, cloud);
-}
-
-bool PointCloudCompressor::reconstructVoxelGrid(const std::vector<uint64_t>& indices,
-                                                const VoxelGrid& metadata_grid,
-                                                VoxelGrid& reconstructed_grid) {
-    const auto& unique_patterns = dictionary_builder_->getUniquePatterns();
-    if (unique_patterns.empty() && !indices.empty()) {
-        std::cerr << "Error: Dictionary is empty but indices are not" << std::endl;
-        return false;
-    }
-
-    VoxelCoord dims = metadata_grid.getDimensions();
-    const float voxel_size = metadata_grid.getVoxelSize();
-    reconstructed_grid.initialize(dims.x, dims.y, dims.z, voxel_size);
-
-    float origin_x = 0.0f, origin_y = 0.0f, origin_z = 0.0f;
-    metadata_grid.getOrigin(origin_x, origin_y, origin_z);
-    reconstructed_grid.setOrigin(origin_x, origin_y, origin_z);
-
-    const int x_blocks = (dims.x + settings_.block_size - 1) / settings_.block_size;
-    const int y_blocks = (dims.y + settings_.block_size - 1) / settings_.block_size;
-    const int z_blocks = (dims.z + settings_.block_size - 1) / settings_.block_size;
-
-    size_t block_index = 0;
-    for (int bz = 0; bz < z_blocks; ++bz) {
-        for (int by = 0; by < y_blocks; ++by) {
-            for (int bx = 0; bx < x_blocks; ++bx) {
-                if (block_index >= indices.size()) {
-                    std::cerr << "Error: Not enough indices for all blocks" << std::endl;
-                    return false;
-                }
-
-                const uint64_t pattern_index = indices[block_index++];
-                if (pattern_index >= unique_patterns.size()) {
-                    std::cerr << "Error: Pattern index out of bounds" << std::endl;
-                    return false;
-                }
-
-                const auto& pattern = unique_patterns[pattern_index];
-                VoxelBlock block(settings_.block_size);
-                block.position = VoxelCoord(bx, by, bz);
-                block.fromBytePattern(pattern);
-                reconstructed_grid.insertBlock(block, bx, by, bz);
-            }
-        }
-    }
-
-    return true;
-}
-
-void PointCloudCompressor::initializeTempPaths(const std::string& /*output_prefix*/) {
-    if (!settings_.temp_directory.empty()) {
-        std::filesystem::create_directories(settings_.temp_directory);
-    }
-}
-
-void PointCloudCompressor::cleanupTempFiles() {
-    // No-op: temporary files handled by caller
-}
-
-std::string PointCloudCompressor::getBlocksFilename(const std::string& prefix) const {
-    return prefix + "_blocks.bin";
-}
-
-std::string PointCloudCompressor::getDictionaryFilename(const std::string& prefix) const {
-    return prefix + "_dict.bin";
-}
-
-std::string PointCloudCompressor::getIndicesFilename(const std::string& prefix) const {
-    return prefix + "_indices.bin";
-}
-
-std::string PointCloudCompressor::getMetadataFilename(const std::string& prefix) const {
-    return prefix + "_meta.bin";
 }
 
 }  // namespace pointcloud_compressor

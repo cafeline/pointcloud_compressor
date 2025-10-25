@@ -167,9 +167,6 @@ int main(int argc, char** argv) {
             std::cout << "Optimal compression settings:\n";
             std::cout << "  Voxel size       : " << optimal_settings.voxel_size << "\n";
             std::cout << "  Block size       : " << optimal_settings.block_size << "\n";
-            std::cout << "  Use 8-bit indices: "
-                      << (optimal_settings.use_8bit_indices ? "yes" : "no") << "\n";
-
             auto block_result = compressor.findOptimalBlockSize(opt_config.base.input_file,
                                                                  opt_config.min_block_size,
                                                                  opt_config.max_block_size,

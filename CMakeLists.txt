@@ -49,7 +49,6 @@ set(CORE_SOURCES
   src/model/VoxelGrid.cpp
   src/core/VoxelProcessor.cpp
   src/core/PatternDictionaryBuilder.cpp
-  src/core/PatternEncoder.cpp
   src/core/PointCloudCompressor.cpp
   src/core/CompressionReportFormatter.cpp
   src/core/BlockSizeReportFormatter.cpp
@@ -72,7 +71,6 @@ add_library(${PROJECT_NAME}_runtime
   src/ros/runtime/CompressionArtifacts.cpp
   src/io/CompressionReportBuilder.cpp
   src/io/Hdf5Writers.cpp
-  src/ros/runtime/TempFileManager.cpp
 )
 target_link_libraries(${PROJECT_NAME}_runtime PUBLIC ${PROJECT_NAME}_core)
 target_include_directories(${PROJECT_NAME}_runtime PUBLIC
@@ -142,6 +140,13 @@ install(DIRECTORY config
 )
 
 # Testing
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(test_end_to_end test/test_end_to_end.cpp)
+  target_link_libraries(test_end_to_end ${PROJECT_NAME}_core)
+endif()
+
 # Export dependencies
 ament_export_dependencies(rosidl_default_runtime)
 
