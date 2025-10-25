@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/runtime/RuntimeHelpers.hpp"
+#include "pointcloud_compressor/common/RuntimeHelpers.hpp"
 
 #include <algorithm>
 
-namespace pointcloud_compressor::runtime {
+namespace pointcloud_compressor::common {
 
 uint8_t bitWidthFromMaxIndex(uint64_t max_index) {
     if (max_index == 0) {
@@ -30,4 +30,4 @@ std::vector<uint32_t> convertBlockIndicesToU32(const std::vector<uint64_t>& indi
     return converted;
 }
 
-}  // namespace pointcloud_compressor::runtime
+}  // namespace pointcloud_compressor::common

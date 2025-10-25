@@ -66,9 +66,9 @@ target_compile_features(${PROJECT_NAME}_core PUBLIC cxx_std_17)
 
 # Runtime integration library
 add_library(${PROJECT_NAME}_runtime
-  src/ros/runtime/RuntimeAPI.cpp
-  src/ros/runtime/RuntimeHelpers.cpp
-  src/ros/runtime/CompressionArtifacts.cpp
+  src/bridge/RuntimeAPI.cpp
+  src/common/RuntimeHelpers.cpp
+  src/common/CompressionArtifacts.cpp
   src/io/CompressionReportBuilder.cpp
   src/io/Hdf5Writers.cpp
 )
@@ -145,6 +145,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_end_to_end test/test_end_to_end.cpp)
   target_link_libraries(test_end_to_end ${PROJECT_NAME}_core)
+
+  ament_add_gtest(test_bridge_api test/test_bridge_api.cpp)
+  target_link_libraries(test_bridge_api ${PROJECT_NAME}_runtime)
 endif()
 
 # Export dependencies

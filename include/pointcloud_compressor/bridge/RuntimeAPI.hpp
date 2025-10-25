@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef POINTCLOUD_COMPRESSOR_RUNTIME_RUNTIME_API_HPP
-#define POINTCLOUD_COMPRESSOR_RUNTIME_RUNTIME_API_HPP
+#ifndef POINTCLOUD_COMPRESSOR_BRIDGE_RUNTIME_API_HPP
+#define POINTCLOUD_COMPRESSOR_BRIDGE_RUNTIME_API_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -79,4 +79,4 @@ void pcc_runtime_release_report(PCCRuntimeHandle* handle, PCCCompressionReport* 
 
 }  // extern "C"
 
-#endif  // POINTCLOUD_COMPRESSOR_RUNTIME_RUNTIME_API_HPP
+#endif  // POINTCLOUD_COMPRESSOR_BRIDGE_RUNTIME_API_HPP

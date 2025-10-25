@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/runtime/RuntimeAPI.hpp"
+#include "pointcloud_compressor/bridge/RuntimeAPI.hpp"
 
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/io/CompressionReportBuilder.hpp"
 #include "pointcloud_compressor/io/HDF5IO.hpp"
 #include "pointcloud_compressor/io/Hdf5Writers.hpp"
-#include "pointcloud_compressor/runtime/CompressionArtifacts.hpp"
-#include "pointcloud_compressor/runtime/RuntimeHelpers.hpp"
+#include "pointcloud_compressor/common/CompressionArtifacts.hpp"
+#include "pointcloud_compressor/common/RuntimeHelpers.hpp"
 #include "pointcloud_compressor/utils/ErrorAccumulator.hpp"
 
 #include <algorithm>
@@ -141,7 +141,7 @@ extern "C" PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
                                        impl->error_message);
 
     const auto block_indices_u32 =
-        pointcloud_compressor::runtime::convertBlockIndicesToU32(result.block_indices);
+        pointcloud_compressor::common::convertBlockIndicesToU32(result.block_indices);
     auto map_data = report_builder.toCompressedMapData(result,
                                                        *request,
                                                        impl->dictionary_buffer,

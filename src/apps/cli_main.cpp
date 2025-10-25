@@ -9,7 +9,7 @@
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/io/CompressionReportBuilder.hpp"
 #include "pointcloud_compressor/io/Hdf5Writers.hpp"
-#include "pointcloud_compressor/runtime/RuntimeAPI.hpp"
+#include "pointcloud_compressor/bridge/RuntimeAPI.hpp"
 #include "pointcloud_compressor/utils/ErrorAccumulator.hpp"
 
 #include <cmath>

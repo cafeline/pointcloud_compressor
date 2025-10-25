@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/runtime/CompressionArtifacts.hpp"
+#include "pointcloud_compressor/common/CompressionArtifacts.hpp"
 
 #include "pointcloud_compressor/model/VoxelGrid.hpp"
 
 #include <algorithm>
 #include <vector>
 
-namespace pointcloud_compressor::runtime {
+namespace pointcloud_compressor::common {
 
 std::vector<uint8_t> flattenDictionaryPatterns(const std::vector<std::vector<uint8_t>>& patterns) {
     if (patterns.empty()) {
@@ -107,4 +107,4 @@ std::vector<uint8_t> buildOccupancyMask(const pointcloud_compressor::VoxelGrid& 
     return occupancy;
 }
 
-}  // namespace pointcloud_compressor::runtime
+}  // namespace pointcloud_compressor::common

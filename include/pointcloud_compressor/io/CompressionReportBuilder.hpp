@@ -9,7 +9,7 @@
 
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/io/HDF5IO.hpp"
-#include "pointcloud_compressor/runtime/RuntimeAPI.hpp"
+#include "pointcloud_compressor/bridge/RuntimeAPI.hpp"
 
 namespace pointcloud_compressor::io {
 

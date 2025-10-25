@@ -6,7 +6,7 @@
 
 #include <string>
 
-#include "pointcloud_compressor/runtime/RuntimeAPI.hpp"
+#include "pointcloud_compressor/bridge/RuntimeAPI.hpp"
 
 namespace pointcloud_compressor {
 
