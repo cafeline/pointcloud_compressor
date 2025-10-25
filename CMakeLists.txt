@@ -67,7 +67,7 @@ target_compile_features(${PROJECT_NAME}_core PUBLIC cxx_std_17)
 
 # Runtime integration library
 add_library(${PROJECT_NAME}_runtime
-  src/ros/runtime/pointcloud_compressor.cpp
+  src/ros/runtime/RuntimeAPI.cpp
   src/ros/runtime/RuntimeHelpers.cpp
   src/ros/runtime/CompressionArtifacts.cpp
   src/ros/runtime/CompressionReportBuilder.cpp
