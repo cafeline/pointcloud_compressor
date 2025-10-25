@@ -69,6 +69,7 @@ add_library(${PROJECT_NAME}_runtime
   src/bridge/RuntimeAPI.cpp
   src/common/RuntimeHelpers.cpp
   src/common/CompressionArtifacts.cpp
+  src/services/RuntimeCompressionService.cpp
   src/io/CompressionReportBuilder.cpp
   src/io/Hdf5Writers.cpp
 )
@@ -148,6 +149,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_bridge_api test/test_bridge_api.cpp)
   target_link_libraries(test_bridge_api ${PROJECT_NAME}_runtime)
+
+  ament_add_gtest(test_runtime_compression_service test/test_runtime_compression_service.cpp)
+  target_link_libraries(test_runtime_compression_service ${PROJECT_NAME}_runtime)
 endif()
 
 # Export dependencies

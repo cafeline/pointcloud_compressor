@@ -3,33 +3,16 @@
 
 #include "pointcloud_compressor/bridge/RuntimeAPI.hpp"
 
-#include "pointcloud_compressor/core/PointCloudCompressor.hpp"
-#include "pointcloud_compressor/io/CompressionReportBuilder.hpp"
-#include "pointcloud_compressor/io/HDF5IO.hpp"
-#include "pointcloud_compressor/io/Hdf5Writers.hpp"
-#include "pointcloud_compressor/common/CompressionArtifacts.hpp"
-#include "pointcloud_compressor/common/RuntimeHelpers.hpp"
-#include "pointcloud_compressor/utils/ErrorAccumulator.hpp"
+#include "pointcloud_compressor/services/RuntimeCompressionService.hpp"
 
-#include <algorithm>
 #include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
 namespace {
 
-using pointcloud_compressor::CompressionResult;
-using pointcloud_compressor::CompressionSettings;
-using pointcloud_compressor::PointCloudCompressor;
-using pointcloud_compressor::VoxelGrid;
-
 struct RuntimeHandle {
-    std::unique_ptr<PointCloudCompressor> compressor;
-    std::vector<uint8_t> dictionary_buffer;
-    std::vector<uint8_t> indices_buffer;
-    std::vector<uint8_t> occupancy_buffer;
-    std::string error_message;
+    std::unique_ptr<pointcloud_compressor::services::RuntimeCompressionService> service;
+    std::string last_error;
 };
 
 RuntimeHandle* toImpl(PCCRuntimeHandle* handle) {
@@ -52,8 +35,8 @@ PCCCompressionReport makeEmptyReport() {
 PCCCompressionReport makeErrorReport(RuntimeHandle* impl, const std::string& message) {
     PCCCompressionReport report = makeEmptyReport();
     if (impl) {
-        impl->error_message = message;
-        report.error_message = impl->error_message.c_str();
+        impl->last_error = message;
+        report.error_message = impl->last_error.c_str();
     }
     return report;
 }
@@ -66,8 +49,8 @@ extern "C" PCCRuntimeHandle* pcc_runtime_create() {
         return nullptr;
     }
 
-    impl->compressor = std::make_unique<PointCloudCompressor>();
-    if (!impl->compressor) {
+    impl->service = std::make_unique<pointcloud_compressor::services::RuntimeCompressionService>();
+    if (!impl->service) {
         return nullptr;
     }
 
@@ -101,86 +84,13 @@ extern "C" PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
     if (request->block_size <= 0) {
         return makeErrorReport(impl, "Block size must be greater than zero");
     }
-    if (!impl->compressor) {
-        return makeErrorReport(impl, "Compressor is not initialized");
-    }
-
-    impl->dictionary_buffer.clear();
-    impl->indices_buffer.clear();
-    impl->occupancy_buffer.clear();
-    impl->error_message.clear();
-
-    CompressionSettings settings;
-    settings.voxel_size = static_cast<float>(request->voxel_size);
-    settings.block_size = request->block_size;
-    settings.min_points_threshold = request->min_points_threshold;
-    settings.bounding_box_margin_ratio = static_cast<float>(request->bounding_box_margin_ratio);
-
-    impl->compressor->updateSettings(settings);
-
-    CompressionResult result;
     try {
-        result = impl->compressor->compress(request->input_file);
+        return impl->service->compress(*request);
     } catch (const std::exception& e) {
         return makeErrorReport(impl, std::string("Compression threw exception: ") + e.what());
     } catch (...) {
         return makeErrorReport(impl, "Compression threw unknown exception");
     }
-
-    if (!result.success) {
-        return makeErrorReport(impl, result.error_message.empty()
-                                     ? "Compression failed"
-                                     : result.error_message);
-    }
-
-    pointcloud_compressor::io::CompressionReportBuilder report_builder;
-    auto report = report_builder.build(result, *request,
-                                       impl->dictionary_buffer,
-                                       impl->indices_buffer,
-                                       impl->occupancy_buffer,
-                                       impl->error_message);
-
-    const auto block_indices_u32 =
-        pointcloud_compressor::common::convertBlockIndicesToU32(result.block_indices);
-    auto map_data = report_builder.toCompressedMapData(result,
-                                                       *request,
-                                                       impl->dictionary_buffer,
-                                                       block_indices_u32);
-
-    pointcloud_compressor::utils::ErrorAccumulator error_acc;
-    if (request->save_hdf5 && request->hdf5_output_path && request->hdf5_output_path[0] != '\0') {
-        std::string err;
-        if (!pointcloud_compressor::io::writeCompressedMap(request->hdf5_output_path,
-                                                           map_data,
-                                                           err)) {
-            error_acc.add(err);
-        }
-    }
-
-    if (request->save_raw_hdf5 && request->raw_hdf5_output_path &&
-        request->raw_hdf5_output_path[0] != '\0') {
-        std::string raw_errors;
-        if (!pointcloud_compressor::io::writeRawVoxelGrid(request->raw_hdf5_output_path,
-                                                          result,
-                                                          *request,
-                                                          impl->occupancy_buffer,
-                                                          raw_errors)) {
-            error_acc.add(raw_errors);
-        }
-    }
-
-    if (!error_acc.empty()) {
-        if (!impl->error_message.empty()) {
-            impl->error_message.append("; ");
-        }
-        impl->error_message.append(error_acc.str());
-    }
-
-    if (!impl->error_message.empty()) {
-        report.error_message = impl->error_message.c_str();
-    }
-
-    return report;
 }
 
 extern "C" void pcc_runtime_release_report(PCCRuntimeHandle* handle, PCCCompressionReport* report) {
@@ -188,9 +98,6 @@ extern "C" void pcc_runtime_release_report(PCCRuntimeHandle* handle, PCCCompress
         return;
     }
     auto* impl = toImpl(handle);
-    impl->dictionary_buffer.clear();
-    impl->indices_buffer.clear();
-    impl->occupancy_buffer.clear();
-    impl->error_message.clear();
+    impl->service->release(*report);
     *report = makeEmptyReport();
 }
