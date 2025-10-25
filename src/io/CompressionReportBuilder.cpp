@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/runtime/CompressionReportBuilder.hpp"
+#include "pointcloud_compressor/io/CompressionReportBuilder.hpp"
 
 #include "pointcloud_compressor/runtime/CompressionArtifacts.hpp"
 #include "pointcloud_compressor/runtime/RuntimeHelpers.hpp"
@@ -23,7 +23,7 @@ PCCCompressionReport makeReportSkeleton() {
 
 }  // namespace
 
-namespace pointcloud_compressor::runtime {
+namespace pointcloud_compressor::io {
 
 namespace {
 
@@ -92,9 +92,9 @@ PCCCompressionReport CompressionReportBuilder::build(const CompressionResult& re
                                                      std::vector<uint8_t>& indices_buffer,
                                                      std::vector<uint8_t>& occupancy_buffer,
                                                      std::string& transient_error_message) const {
-    dictionary_buffer = flattenDictionaryPatterns(result.pattern_dictionary);
-    indices_buffer = packBlockIndices(result.block_indices, static_cast<uint8_t>(result.index_bit_size));
-    occupancy_buffer = buildOccupancyMask(result.voxel_grid);
+    dictionary_buffer = pointcloud_compressor::runtime::flattenDictionaryPatterns(result.pattern_dictionary);
+    indices_buffer = pointcloud_compressor::runtime::packBlockIndices(result.block_indices, static_cast<uint8_t>(result.index_bit_size));
+    occupancy_buffer = pointcloud_compressor::runtime::buildOccupancyMask(result.voxel_grid);
     transient_error_message.clear();
 
     PCCCompressionReport report = makeReportSkeleton();
@@ -184,7 +184,7 @@ pointcloud_compressor::CompressedMapData CompressionReportBuilder::toCompressedM
 
     data.block_indices.assign(block_indices_u32.begin(), block_indices_u32.end());
 
-    data.block_index_bit_width = bitWidthFromMaxIndex(result.max_index);
+    data.block_index_bit_width = pointcloud_compressor::runtime::bitWidthFromMaxIndex(result.max_index);
     data.block_index_sentinel = 0;
 
     data.original_points = static_cast<uint64_t>(result.point_count);
@@ -263,4 +263,4 @@ std::vector<uint8_t> CompressionReportBuilder::extractOccupancy(
                                 report.occupancy.occupancy + report.occupancy.size);
 }
 
-}  // namespace pointcloud_compressor::runtime
+}  // namespace pointcloud_compressor::io

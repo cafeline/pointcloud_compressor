@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/runtime/Hdf5Writers.hpp"
+#include "pointcloud_compressor/io/Hdf5Writers.hpp"
 
 #include <filesystem>
 
 #include "pointcloud_compressor/io/HDF5IO.hpp"
-#include "pointcloud_compressor/runtime/CompressionReportBuilder.hpp"
+#include "pointcloud_compressor/io/CompressionReportBuilder.hpp"
 
-namespace pointcloud_compressor::runtime {
+namespace pointcloud_compressor::io {
 
 namespace {
 
@@ -144,4 +144,4 @@ bool writeRawVoxelGrid(const std::string& output_path,
     return true;
 }
 
-}  // namespace pointcloud_compressor::runtime
+}  // namespace pointcloud_compressor::io

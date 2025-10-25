@@ -7,8 +7,8 @@
 #include "pointcloud_compressor/core/BlockSizeReportFormatter.hpp"
 #include "pointcloud_compressor/core/CompressionReportFormatter.hpp"
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
-#include "pointcloud_compressor/runtime/CompressionReportBuilder.hpp"
-#include "pointcloud_compressor/runtime/Hdf5Writers.hpp"
+#include "pointcloud_compressor/io/CompressionReportBuilder.hpp"
+#include "pointcloud_compressor/io/Hdf5Writers.hpp"
 #include "pointcloud_compressor/runtime/RuntimeAPI.hpp"
 #include "pointcloud_compressor/utils/ErrorAccumulator.hpp"
 
@@ -32,7 +32,7 @@ using pointcloud_compressor::config::loadBlockSizeOptimizationConfigFromYaml;
 using pointcloud_compressor::config::loadCompressorConfigFromYaml;
 using pointcloud_compressor::config::parseConfigPath;
 using pointcloud_compressor::config::validateForRuntime;
-using pointcloud_compressor::runtime::CompressionReportBuilder;
+using pointcloud_compressor::io::CompressionReportBuilder;
 
 void printUsage(const char* program_name) {
     std::cout << "Usage: " << program_name << " <command> [options]\n";
@@ -107,7 +107,7 @@ int main(int argc, char** argv) {
             pointcloud_compressor::utils::ErrorAccumulator error_acc;
             if (setup.request.save_hdf5 && setup.request.hdf5_output_path) {
                 std::string err;
-                if (!pointcloud_compressor::runtime::writeCompressedMap(setup.config.hdf5_output_file, map_data, err)) {
+                if (!pointcloud_compressor::io::writeCompressedMap(setup.config.hdf5_output_file, map_data, err)) {
                     error_acc.add(err);
                 } else {
                     printCompressionSummary(report, setup.config.hdf5_output_file);
@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
 
             if (setup.request.save_raw_hdf5 && setup.request.raw_hdf5_output_path) {
                 std::string err;
-                if (pointcloud_compressor::runtime::writeRawVoxelGrid(setup.config.raw_hdf5_output_file, report, err)) {
+                if (pointcloud_compressor::io::writeRawVoxelGrid(setup.config.raw_hdf5_output_file, report, err)) {
                     std::cout << "  Raw voxel grid   : " << setup.config.raw_hdf5_output_file << "\n";
                 } else {
                     error_acc.add(err);

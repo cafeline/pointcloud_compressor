@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef POINTCLOUD_COMPRESSOR_RUNTIME_COMPRESSION_REPORT_BUILDER_HPP
-#define POINTCLOUD_COMPRESSOR_RUNTIME_COMPRESSION_REPORT_BUILDER_HPP
+#ifndef POINTCLOUD_COMPRESSOR_IO_COMPRESSION_REPORT_BUILDER_HPP
+#define POINTCLOUD_COMPRESSOR_IO_COMPRESSION_REPORT_BUILDER_HPP
 
 #include <string>
 #include <vector>
@@ -10,7 +10,7 @@
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/runtime/RuntimeAPI.hpp"
 
-namespace pointcloud_compressor::runtime {
+namespace pointcloud_compressor::io {
 
 class CompressionReportBuilder {
 public:
@@ -35,6 +35,6 @@ public:
     std::vector<uint8_t> extractOccupancy(const PCCCompressionReport& report) const;
 };
 
-}  // namespace pointcloud_compressor::runtime
+}  // namespace pointcloud_compressor::io
 
-#endif  // POINTCLOUD_COMPRESSOR_RUNTIME_COMPRESSION_REPORT_BUILDER_HPP
+#endif  // POINTCLOUD_COMPRESSOR_IO_COMPRESSION_REPORT_BUILDER_HPP

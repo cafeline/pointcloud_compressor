@@ -5,8 +5,8 @@
 
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/runtime/CompressionArtifacts.hpp"
-#include "pointcloud_compressor/runtime/CompressionReportBuilder.hpp"
-#include "pointcloud_compressor/runtime/Hdf5Writers.hpp"
+#include "pointcloud_compressor/io/CompressionReportBuilder.hpp"
+#include "pointcloud_compressor/io/Hdf5Writers.hpp"
 #include "pointcloud_compressor/runtime/RuntimeHelpers.hpp"
 #include "pointcloud_compressor/runtime/TempFileManager.hpp"
 #include "pointcloud_compressor/utils/ErrorAccumulator.hpp"
@@ -151,7 +151,7 @@ extern "C" PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
                                      : result.error_message);
     }
 
-    pointcloud_compressor::runtime::CompressionReportBuilder report_builder;
+    pointcloud_compressor::io::CompressionReportBuilder report_builder;
     auto report = report_builder.build(result, *request,
                                        impl->dictionary_buffer,
                                        impl->indices_buffer,
@@ -168,9 +168,9 @@ extern "C" PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
     pointcloud_compressor::utils::ErrorAccumulator error_acc;
     if (request->save_hdf5 && request->hdf5_output_path && request->hdf5_output_path[0] != '\0') {
         std::string err;
-        if (!pointcloud_compressor::runtime::writeCompressedMap(request->hdf5_output_path,
-                                                                map_data,
-                                                                err)) {
+        if (!pointcloud_compressor::io::writeCompressedMap(request->hdf5_output_path,
+                                                           map_data,
+                                                           err)) {
             error_acc.add(err);
         }
     }
@@ -178,11 +178,11 @@ extern "C" PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
     if (request->save_raw_hdf5 && request->raw_hdf5_output_path &&
         request->raw_hdf5_output_path[0] != '\0') {
         std::string raw_errors;
-        if (!pointcloud_compressor::runtime::writeRawVoxelGrid(request->raw_hdf5_output_path,
-                                                               result,
-                                                               *request,
-                                                               impl->occupancy_buffer,
-                                                               raw_errors)) {
+        if (!pointcloud_compressor::io::writeRawVoxelGrid(request->raw_hdf5_output_path,
+                                                          result,
+                                                          *request,
+                                                          impl->occupancy_buffer,
+                                                          raw_errors)) {
             error_acc.add(raw_errors);
         }
     }

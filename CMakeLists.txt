@@ -70,8 +70,8 @@ add_library(${PROJECT_NAME}_runtime
   src/ros/runtime/RuntimeAPI.cpp
   src/ros/runtime/RuntimeHelpers.cpp
   src/ros/runtime/CompressionArtifacts.cpp
-  src/ros/runtime/CompressionReportBuilder.cpp
-  src/ros/runtime/Hdf5Writers.cpp
+  src/io/CompressionReportBuilder.cpp
+  src/io/Hdf5Writers.cpp
   src/ros/runtime/TempFileManager.cpp
 )
 target_link_libraries(${PROJECT_NAME}_runtime PUBLIC ${PROJECT_NAME}_core)
