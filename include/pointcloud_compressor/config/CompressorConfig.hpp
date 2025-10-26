@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
-#include "pointcloud_compressor/bridge/RuntimeAPI.hpp"
+#include "pointcloud_compressor/bridge/Bridge.hpp"
 
 namespace pointcloud_compressor::config {
 

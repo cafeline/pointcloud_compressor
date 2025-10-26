@@ -13,7 +13,6 @@ PCCCompressionRequest toCompressionRequest(const CompressorConfig& config,
     request.input_file = config.input_file.c_str();
     request.voxel_size = static_cast<double>(settings.voxel_size);
     request.block_size = settings.block_size;
-    request.use_8bit_indices = false;
     request.min_points_threshold = settings.min_points_threshold;
     request.save_hdf5 = config.save_hdf5;
     request.hdf5_output_path = (config.save_hdf5 && !config.hdf5_output_file.empty())

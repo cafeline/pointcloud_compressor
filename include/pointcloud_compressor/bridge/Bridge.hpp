@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef POINTCLOUD_COMPRESSOR_BRIDGE_RUNTIME_API_HPP
-#define POINTCLOUD_COMPRESSOR_BRIDGE_RUNTIME_API_HPP
+#ifndef POINTCLOUD_COMPRESSOR_BRIDGE_BRIDGE_HPP
+#define POINTCLOUD_COMPRESSOR_BRIDGE_BRIDGE_HPP
 
 #include <cstddef>
 #include <cstdint>
@@ -15,7 +15,6 @@ struct PCCCompressionRequest {
     const char* input_file;
     double voxel_size;
     int32_t block_size;
-    bool use_8bit_indices;
     int32_t min_points_threshold;
     bool save_hdf5;
     const char* hdf5_output_path;
@@ -79,4 +78,4 @@ void pcc_runtime_release_report(PCCRuntimeHandle* handle, PCCCompressionReport* 
 
 }  // extern "C"
 
-#endif  // POINTCLOUD_COMPRESSOR_BRIDGE_RUNTIME_API_HPP
+#endif  // POINTCLOUD_COMPRESSOR_BRIDGE_BRIDGE_HPP

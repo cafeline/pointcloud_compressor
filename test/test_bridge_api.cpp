@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "pointcloud_compressor/bridge/RuntimeAPI.hpp"
+#include "pointcloud_compressor/bridge/Bridge.hpp"
 
 TEST(BridgeHeaders, CreateAndDestroyRuntimeHandle) {
   PCCRuntimeHandle* handle = pcc_runtime_create();

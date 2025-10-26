@@ -6,7 +6,6 @@ std_msgs/Header header
 # Compression settings
 float64 voxel_size
 uint32 block_size
-bool use_8bit_indices
 uint32 min_points_threshold
 
 # Voxel grid dimensions

@@ -3,7 +3,7 @@
 #include <filesystem>
 #include <fstream>
 
-#include "pointcloud_compressor/bridge/RuntimeAPI.hpp"
+#include "pointcloud_compressor/bridge/Bridge.hpp"
 #include "pointcloud_compressor/services/RuntimeCompressionService.hpp"
 
 namespace fs = std::filesystem;
@@ -45,7 +45,6 @@ TEST(RuntimeCompressionService, CompressesRequestAndProvidesReport) {
   request.input_file = ply_string.c_str();
   request.voxel_size = 0.1;
   request.block_size = 2;
-  request.use_8bit_indices = false;
   request.min_points_threshold = 1;
   request.save_hdf5 = false;
   request.hdf5_output_path = nullptr;
@@ -64,4 +63,3 @@ TEST(RuntimeCompressionService, CompressesRequestAndProvidesReport) {
 
   fs::remove_all(temp_dir);
 }
-

@@ -225,7 +225,6 @@ private:
 
         msg.voxel_size = voxel_size_;
         msg.block_size = static_cast<uint32_t>(block_size_);
-        msg.use_8bit_indices = use_8bit_indices_;
         msg.min_points_threshold = static_cast<uint32_t>(min_points_threshold_);
 
         msg.voxel_grid_dimensions.x = report.grid.dimensions[0];
@@ -361,7 +360,6 @@ private:
     std::string input_file_;
     double voxel_size_{0.01};
     int block_size_{8};
-    bool use_8bit_indices_{false};
     int min_points_threshold_{1};
     bool publish_occupied_voxel_markers_{false};
     bool save_hdf5_{false};

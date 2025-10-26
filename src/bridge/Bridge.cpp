@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/bridge/RuntimeAPI.hpp"
+#include "pointcloud_compressor/bridge/Bridge.hpp"
 
 #include "pointcloud_compressor/services/RuntimeCompressionService.hpp"
 

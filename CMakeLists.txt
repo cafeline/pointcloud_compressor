@@ -66,7 +66,7 @@ target_compile_features(${PROJECT_NAME}_core PUBLIC cxx_std_17)
 
 # Runtime integration library
 add_library(${PROJECT_NAME}_runtime
-  src/bridge/RuntimeAPI.cpp
+  src/bridge/Bridge.cpp
   src/common/RuntimeHelpers.cpp
   src/common/CompressionArtifacts.cpp
   src/services/RuntimeCompressionService.cpp
