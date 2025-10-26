@@ -132,6 +132,8 @@ int main(int argc, char** argv) {
             pcc_handle_release_report(handle, &report);
             pcc_handle_destroy(handle);
 
+            std::cout << "Processing completed!!\n";
+
         } else if (command == "optimize") {
             std::vector<std::string> args(argv + 2, argv + argc);
             std::string config_path;
@@ -173,6 +175,8 @@ int main(int argc, char** argv) {
                                                                  opt_config.step_size,
                                                                  opt_config.verbose);
             std::cout << formatBlockSizeSummary(block_result, opt_config.verbose) << "\n";
+
+            std::cout << "Processing completed!!\n";
 
         } else {
             std::cerr << "Error: Unknown command '" << command << "'\n";

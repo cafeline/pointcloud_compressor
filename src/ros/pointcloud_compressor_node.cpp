@@ -48,13 +48,11 @@ public:
         if (!validateConfiguration()) {
             return;
         }
-
-        setupPublishers();
-        compressAndPublish();
-
         RCLCPP_INFO(get_logger(),
                     "PointCloud Compressor Node initialized - Input: %s, Voxel: %.3f, Block: %d",
                     input_file_.c_str(), voxel_size_, block_size_);
+        setupPublishers();
+        compressAndPublish();
     }
 
     ~PointCloudCompressorNode() override {
@@ -213,6 +211,7 @@ private:
         }
 
         pcc_handle_release_report(compression_handle_, &report);
+        RCLCPP_INFO(get_logger(), "Processing completed!!");
     }
 
     pointcloud_compressor::msg::PatternDictionary createPatternDictionaryMessage(
