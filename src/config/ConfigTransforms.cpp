@@ -34,7 +34,7 @@ CompressionSetup buildCompressionSetup(const CompressorConfig& config) {
     return setup;
 }
 
-std::vector<std::string> validateForRuntime(const CompressionSetup& setup) {
+std::vector<std::string> validateCompressionSetup(const CompressionSetup& setup) {
     return setup.config.validate(true);
 }
 

@@ -9,7 +9,7 @@
 
 extern "C" {
 
-struct PCCRuntimeHandle;
+struct PCCCompressionHandle;
 
 struct PCCCompressionRequest {
     const char* input_file;
@@ -68,13 +68,13 @@ struct PCCCompressionReport {
     uint64_t max_index;
 };
 
-PCCRuntimeHandle* pcc_runtime_create();
-void pcc_runtime_destroy(PCCRuntimeHandle* handle);
+PCCCompressionHandle* pcc_handle_create();
+void pcc_handle_destroy(PCCCompressionHandle* handle);
 
-PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
-                                          const PCCCompressionRequest* request);
+PCCCompressionReport pcc_handle_compress(PCCCompressionHandle* handle,
+                                         const PCCCompressionRequest* request);
 
-void pcc_runtime_release_report(PCCRuntimeHandle* handle, PCCCompressionReport* report);
+void pcc_handle_release_report(PCCCompressionHandle* handle, PCCCompressionReport* report);
 
 }  // extern "C"
 

@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
-#include "pointcloud_compressor/common/RuntimeHelpers.hpp"
+#include "pointcloud_compressor/common/CompressionDataUtils.hpp"
 
-TEST(RuntimeHelpers, BitWidthFromMaxIndex) {
+TEST(CompressionDataUtils, BitWidthFromMaxIndex) {
   using pointcloud_compressor::common::bitWidthFromMaxIndex;
 
   EXPECT_EQ(bitWidthFromMaxIndex(0), 1);
@@ -14,7 +14,7 @@ TEST(RuntimeHelpers, BitWidthFromMaxIndex) {
   EXPECT_EQ(bitWidthFromMaxIndex((1ULL << 32) - 1), 32);
 }
 
-TEST(RuntimeHelpers, ConvertBlockIndicesToU32) {
+TEST(CompressionDataUtils, ConvertBlockIndicesToU32) {
   using pointcloud_compressor::common::convertBlockIndicesToU32;
   std::vector<uint64_t> src{0, 1, 65535, 1ULL << 33};
   auto converted = convertBlockIndicesToU32(src);

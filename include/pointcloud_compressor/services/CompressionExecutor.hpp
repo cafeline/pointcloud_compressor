@@ -1,23 +1,23 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef POINTCLOUD_COMPRESSOR_SERVICES_RUNTIME_COMPRESSION_SERVICE_HPP
-#define POINTCLOUD_COMPRESSOR_SERVICES_RUNTIME_COMPRESSION_SERVICE_HPP
+#ifndef POINTCLOUD_COMPRESSOR_SERVICES_COMPRESSION_EXECUTOR_HPP
+#define POINTCLOUD_COMPRESSOR_SERVICES_COMPRESSION_EXECUTOR_HPP
 
 #include <string>
 #include <vector>
 
-#include "pointcloud_compressor/bridge/Bridge.hpp"
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
 #include "pointcloud_compressor/io/CompressionReportBuilder.hpp"
 #include "pointcloud_compressor/io/Hdf5Writers.hpp"
 #include "pointcloud_compressor/utils/ErrorAccumulator.hpp"
+#include "pointcloud_compressor/bridge/Bridge.hpp"
 
 namespace pointcloud_compressor::services {
 
-class RuntimeCompressionService {
+class CompressionExecutor {
 public:
-    RuntimeCompressionService();
+    CompressionExecutor();
 
     PCCCompressionReport compress(const PCCCompressionRequest& request);
     void release(PCCCompressionReport& report);
@@ -39,5 +39,4 @@ private:
 
 }  // namespace pointcloud_compressor::services
 
-#endif  // POINTCLOUD_COMPRESSOR_SERVICES_RUNTIME_COMPRESSION_SERVICE_HPP
-
+#endif  // POINTCLOUD_COMPRESSOR_SERVICES_COMPRESSION_EXECUTOR_HPP

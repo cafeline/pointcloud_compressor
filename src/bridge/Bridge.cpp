@@ -3,20 +3,20 @@
 
 #include "pointcloud_compressor/bridge/Bridge.hpp"
 
-#include "pointcloud_compressor/services/RuntimeCompressionService.hpp"
+#include "pointcloud_compressor/services/CompressionExecutor.hpp"
 
 #include <memory>
 #include <string>
 
 namespace {
 
-struct RuntimeHandle {
-    std::unique_ptr<pointcloud_compressor::services::RuntimeCompressionService> service;
+struct CompressionHandleImpl {
+    std::unique_ptr<pointcloud_compressor::services::CompressionExecutor> service;
     std::string last_error;
 };
 
-RuntimeHandle* toImpl(PCCRuntimeHandle* handle) {
-    return reinterpret_cast<RuntimeHandle*>(handle);
+CompressionHandleImpl* toImpl(PCCCompressionHandle* handle) {
+    return reinterpret_cast<CompressionHandleImpl*>(handle);
 }
 
 PCCCompressionReport makeEmptyReport() {
@@ -32,7 +32,7 @@ PCCCompressionReport makeEmptyReport() {
     return report;
 }
 
-PCCCompressionReport makeErrorReport(RuntimeHandle* impl, const std::string& message) {
+PCCCompressionReport makeErrorReport(CompressionHandleImpl* impl, const std::string& message) {
     PCCCompressionReport report = makeEmptyReport();
     if (impl) {
         impl->last_error = message;
@@ -43,21 +43,21 @@ PCCCompressionReport makeErrorReport(RuntimeHandle* impl, const std::string& mes
 
 }  // namespace
 
-extern "C" PCCRuntimeHandle* pcc_runtime_create() {
-    auto impl = std::make_unique<RuntimeHandle>();
+extern "C" PCCCompressionHandle* pcc_handle_create() {
+    auto impl = std::make_unique<CompressionHandleImpl>();
     if (!impl) {
         return nullptr;
     }
 
-    impl->service = std::make_unique<pointcloud_compressor::services::RuntimeCompressionService>();
+    impl->service = std::make_unique<pointcloud_compressor::services::CompressionExecutor>();
     if (!impl->service) {
         return nullptr;
     }
 
-    return reinterpret_cast<PCCRuntimeHandle*>(impl.release());
+    return reinterpret_cast<PCCCompressionHandle*>(impl.release());
 }
 
-extern "C" void pcc_runtime_destroy(PCCRuntimeHandle* handle) {
+extern "C" void pcc_handle_destroy(PCCCompressionHandle* handle) {
     if (!handle) {
         return;
     }
@@ -65,11 +65,11 @@ extern "C" void pcc_runtime_destroy(PCCRuntimeHandle* handle) {
     delete impl;
 }
 
-extern "C" PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
-                                                     const PCCCompressionRequest* request) {
+extern "C" PCCCompressionReport pcc_handle_compress(PCCCompressionHandle* handle,
+                                                    const PCCCompressionRequest* request) {
     auto* impl = toImpl(handle);
     if (!impl) {
-        return makeErrorReport(nullptr, "Invalid runtime handle");
+        return makeErrorReport(nullptr, "Invalid compression handle");
     }
 
     if (!request) {
@@ -93,7 +93,7 @@ extern "C" PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
     }
 }
 
-extern "C" void pcc_runtime_release_report(PCCRuntimeHandle* handle, PCCCompressionReport* report) {
+extern "C" void pcc_handle_release_report(PCCCompressionHandle* handle, PCCCompressionReport* report) {
     if (!handle || !report) {
         return;
     }

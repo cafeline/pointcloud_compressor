@@ -1,14 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#ifndef POINTCLOUD_COMPRESSOR_COMMON_RUNTIME_HELPERS_HPP
-#define POINTCLOUD_COMPRESSOR_COMMON_RUNTIME_HELPERS_HPP
+#ifndef POINTCLOUD_COMPRESSOR_COMMON_COMPRESSION_DATA_UTILS_HPP
+#define POINTCLOUD_COMPRESSOR_COMMON_COMPRESSION_DATA_UTILS_HPP
 
 #include <cstdint>
 #include <vector>
-
-#include "pointcloud_compressor/core/PointCloudCompressor.hpp"
-#include "pointcloud_compressor/bridge/Bridge.hpp"
 
 namespace pointcloud_compressor::common {
 
@@ -17,4 +14,4 @@ std::vector<uint32_t> convertBlockIndicesToU32(const std::vector<uint64_t>& indi
 
 }  // namespace pointcloud_compressor::common
 
-#endif  // POINTCLOUD_COMPRESSOR_COMMON_RUNTIME_HELPERS_HPP
+#endif  // POINTCLOUD_COMPRESSOR_COMMON_COMPRESSION_DATA_UTILS_HPP

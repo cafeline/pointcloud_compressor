@@ -2,9 +2,8 @@
 
 #include "pointcloud_compressor/bridge/Bridge.hpp"
 
-TEST(BridgeHeaders, CreateAndDestroyRuntimeHandle) {
-  PCCRuntimeHandle* handle = pcc_runtime_create();
+TEST(BridgeHeaders, CreateAndDestroyCompressionHandle) {
+  PCCCompressionHandle* handle = pcc_handle_create();
   ASSERT_NE(handle, nullptr);
-  pcc_runtime_destroy(handle);
+  pcc_handle_destroy(handle);
 }
-

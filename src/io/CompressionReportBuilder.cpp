@@ -5,7 +5,7 @@
 
 #include "pointcloud_compressor/io/HDF5IO.hpp"
 #include "pointcloud_compressor/common/CompressionArtifacts.hpp"
-#include "pointcloud_compressor/common/RuntimeHelpers.hpp"
+#include "pointcloud_compressor/common/CompressionDataUtils.hpp"
 
 namespace {
 

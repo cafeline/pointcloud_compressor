@@ -71,7 +71,7 @@ public:
         auto base_config = buildBaseConfig();
         compression_setup_ = pointcloud_compressor::config::buildCompressionSetup(base_config);
 
-        auto errors = pointcloud_compressor::config::validateForRuntime(compression_setup_);
+        auto errors = pointcloud_compressor::config::validateCompressionSetup(compression_setup_);
         if (!errors.empty()) {
             for (const auto& err : errors) {
                 RCLCPP_ERROR(this->get_logger(), "%s", err.c_str());

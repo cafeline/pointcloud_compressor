@@ -4,7 +4,7 @@
 #include <fstream>
 
 #include "pointcloud_compressor/bridge/Bridge.hpp"
-#include "pointcloud_compressor/services/RuntimeCompressionService.hpp"
+#include "pointcloud_compressor/services/CompressionExecutor.hpp"
 
 namespace fs = std::filesystem;
 
@@ -30,7 +30,7 @@ fs::path writeTestPointCloud(const fs::path& dir) {
 
 }  // namespace
 
-TEST(RuntimeCompressionService, CompressesRequestAndProvidesReport) {
+TEST(CompressionExecutor, CompressesRequestAndProvidesReport) {
   const fs::path temp_dir = fs::temp_directory_path() / "pointcloud_compressor_service_test";
   if (fs::exists(temp_dir)) {
     fs::remove_all(temp_dir);
@@ -38,7 +38,7 @@ TEST(RuntimeCompressionService, CompressesRequestAndProvidesReport) {
   fs::create_directories(temp_dir);
   const fs::path ply_file = writeTestPointCloud(temp_dir);
 
-  pointcloud_compressor::services::RuntimeCompressionService service;
+  pointcloud_compressor::services::CompressionExecutor executor;
 
   PCCCompressionRequest request{};
   std::string ply_string = ply_file.string();
@@ -52,14 +52,14 @@ TEST(RuntimeCompressionService, CompressesRequestAndProvidesReport) {
   request.raw_hdf5_output_path = nullptr;
   request.bounding_box_margin_ratio = 0.0;
 
-  auto report = service.compress(request);
+  auto report = executor.compress(request);
 
   EXPECT_TRUE(report.success);
   EXPECT_EQ(report.error_message, nullptr);
   EXPECT_GT(report.indices.total_blocks, 0u);
   EXPECT_GT(report.dictionary.num_patterns, 0u);
 
-  service.release(report);
+  executor.release(report);
 
   fs::remove_all(temp_dir);
 }

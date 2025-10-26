@@ -43,7 +43,7 @@ The CLI and ROS 2 node writes a HDF5 archive.
 
 ### pointcloud_compressor_node
 
-Compresses a point cloud file and publishes a PatternDictionary message together with optional voxel markers for visualization. The node leverages the runtime compression library and does not subscribe to sensor streams. It is intended for preprocessing map assets.
+Compresses a point cloud file and publishes a PatternDictionary message together with optional voxel markers for visualization. The node leverages the compression bridge library and does not subscribe to sensor streams. It is intended for preprocessing map assets.
 
 
 #### Subscribed Topics

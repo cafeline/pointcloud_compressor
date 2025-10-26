@@ -22,15 +22,13 @@
 
 extern "C" {
 
-struct PCCRuntimeHandle;
-
-struct PCCRuntimeHandle;
-PCCRuntimeHandle* pcc_runtime_create();
-void pcc_runtime_destroy(PCCRuntimeHandle* handle);
-PCCCompressionReport pcc_runtime_compress(PCCRuntimeHandle* handle,
-                                          const PCCCompressionRequest* request);
-void pcc_runtime_release_report(PCCRuntimeHandle* handle,
-                                PCCCompressionReport* report);
+struct PCCCompressionHandle;
+PCCCompressionHandle* pcc_handle_create();
+void pcc_handle_destroy(PCCCompressionHandle* handle);
+PCCCompressionReport pcc_handle_compress(PCCCompressionHandle* handle,
+                                         const PCCCompressionRequest* request);
+void pcc_handle_release_report(PCCCompressionHandle* handle,
+                               PCCCompressionReport* report);
 
 }  // extern "C"
 
@@ -38,12 +36,12 @@ class PointCloudCompressorNode : public rclcpp::Node {
 public:
     PointCloudCompressorNode()
         : rclcpp::Node("pointcloud_compressor_node"),
-          runtime_handle_(pcc_runtime_create()) {
+          compression_handle_(pcc_handle_create()) {
         declareParameters();
         loadParameters();
 
-        if (!runtime_handle_) {
-            RCLCPP_ERROR(get_logger(), "Failed to initialize compression runtime handle");
+        if (!compression_handle_) {
+            RCLCPP_ERROR(get_logger(), "Failed to initialize compression handle");
             return;
         }
 
@@ -60,9 +58,9 @@ public:
     }
 
     ~PointCloudCompressorNode() override {
-        if (runtime_handle_) {
-            pcc_runtime_destroy(runtime_handle_);
-            runtime_handle_ = nullptr;
+        if (compression_handle_) {
+            pcc_handle_destroy(compression_handle_);
+            compression_handle_ = nullptr;
         }
     }
 
@@ -175,13 +173,13 @@ private:
     }
 
     void compressAndPublish() {
-        if (!runtime_handle_) {
-            RCLCPP_ERROR(get_logger(), "Runtime handle is not available");
+        if (!compression_handle_) {
+            RCLCPP_ERROR(get_logger(), "Compression handle is not available");
             return;
         }
 
         auto setup = pointcloud_compressor::config::buildCompressionSetup(configFromParameters());
-        auto errors = pointcloud_compressor::config::validateForRuntime(setup);
+        auto errors = pointcloud_compressor::config::validateCompressionSetup(setup);
         if (!errors.empty()) {
             for (const auto& err : errors) {
                 RCLCPP_ERROR(get_logger(), "%s", err.c_str());
@@ -189,12 +187,12 @@ private:
             return;
         }
 
-        auto report = pcc_runtime_compress(runtime_handle_, &setup.request);
+        auto report = pcc_handle_compress(compression_handle_, &setup.request);
 
         if (!report.success) {
             const char* message = report.error_message ? report.error_message : "Unknown error";
             RCLCPP_ERROR(get_logger(), "Compression failed: %s", message);
-            pcc_runtime_release_report(runtime_handle_, &report);
+            pcc_handle_release_report(compression_handle_, &report);
             return;
         }
 
@@ -211,10 +209,10 @@ private:
         }
 
         if (report.error_message && report.error_message[0] != '\0') {
-            RCLCPP_WARN(get_logger(), "Runtime warning: %s", report.error_message);
+            RCLCPP_WARN(get_logger(), "Compression warning: %s", report.error_message);
         }
 
-        pcc_runtime_release_report(runtime_handle_, &report);
+        pcc_handle_release_report(compression_handle_, &report);
     }
 
     pointcloud_compressor::msg::PatternDictionary createPatternDictionaryMessage(
@@ -353,7 +351,7 @@ private:
         return marker_array;
     }
 
-    PCCRuntimeHandle* runtime_handle_;
+    PCCCompressionHandle* compression_handle_;
     rclcpp::Publisher<pointcloud_compressor::msg::PatternDictionary>::SharedPtr pattern_dict_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 

@@ -1,23 +1,23 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/services/RuntimeCompressionService.hpp"
+#include "pointcloud_compressor/services/CompressionExecutor.hpp"
 
 #include <filesystem>
 #include <stdexcept>
 
 #include "pointcloud_compressor/common/CompressionArtifacts.hpp"
-#include "pointcloud_compressor/common/RuntimeHelpers.hpp"
+#include "pointcloud_compressor/common/CompressionDataUtils.hpp"
 
 namespace pointcloud_compressor::services {
 
-RuntimeCompressionService::RuntimeCompressionService()
+CompressionExecutor::CompressionExecutor()
     : compressor_(pointcloud_compressor::CompressionSettings()) {
     clearBuffers();
     last_report_ = makeEmptyReport();
 }
 
-PCCCompressionReport RuntimeCompressionService::compress(const PCCCompressionRequest& request) {
+PCCCompressionReport CompressionExecutor::compress(const PCCCompressionRequest& request) {
     clearBuffers();
 
     pointcloud_compressor::CompressionSettings settings;
@@ -85,13 +85,13 @@ PCCCompressionReport RuntimeCompressionService::compress(const PCCCompressionReq
     return last_report_;
 }
 
-void RuntimeCompressionService::release(PCCCompressionReport& report) {
+void CompressionExecutor::release(PCCCompressionReport& report) {
     clearBuffers();
     report = makeEmptyReport();
     last_report_ = report;
 }
 
-PCCCompressionReport RuntimeCompressionService::makeEmptyReport() const {
+PCCCompressionReport CompressionExecutor::makeEmptyReport() const {
     PCCCompressionReport report{};
     report.success = false;
     report.error_message = nullptr;
@@ -104,7 +104,7 @@ PCCCompressionReport RuntimeCompressionService::makeEmptyReport() const {
     return report;
 }
 
-PCCCompressionReport RuntimeCompressionService::makeErrorReport(const std::string& message) {
+PCCCompressionReport CompressionExecutor::makeErrorReport(const std::string& message) {
     clearBuffers();
     error_message_ = message;
     last_report_ = makeEmptyReport();
@@ -112,7 +112,7 @@ PCCCompressionReport RuntimeCompressionService::makeErrorReport(const std::strin
     return last_report_;
 }
 
-void RuntimeCompressionService::clearBuffers() {
+void CompressionExecutor::clearBuffers() {
     dictionary_buffer_.clear();
     indices_buffer_.clear();
     occupancy_buffer_.clear();
@@ -121,4 +121,3 @@ void RuntimeCompressionService::clearBuffers() {
 }
 
 }  // namespace pointcloud_compressor::services
-

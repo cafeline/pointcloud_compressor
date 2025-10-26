@@ -31,7 +31,7 @@ using pointcloud_compressor::config::buildCompressionSetup;
 using pointcloud_compressor::config::loadBlockSizeOptimizationConfigFromYaml;
 using pointcloud_compressor::config::loadCompressorConfigFromYaml;
 using pointcloud_compressor::config::parseConfigPath;
-using pointcloud_compressor::config::validateForRuntime;
+using pointcloud_compressor::config::validateCompressionSetup;
 using pointcloud_compressor::io::CompressionReportBuilder;
 
 void printUsage(const char* program_name) {
@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
                 return 1;
             }
 
-            auto errors = validateForRuntime(setup);
+            auto errors = validateCompressionSetup(setup);
             if (!errors.empty()) {
                 for (const auto& err : errors) {
                     std::cerr << "Config error: " << err << "\n";
@@ -84,18 +84,18 @@ int main(int argc, char** argv) {
                 return 1;
             }
 
-            PCCRuntimeHandle* handle = pcc_runtime_create();
+            PCCCompressionHandle* handle = pcc_handle_create();
             if (!handle) {
-                std::cerr << "Failed to initialize compressor runtime.\n";
+                std::cerr << "Failed to initialize compression handle.\n";
                 return 1;
             }
 
-            auto report = pcc_runtime_compress(handle, &setup.request);
+            auto report = pcc_handle_compress(handle, &setup.request);
             if (!report.success) {
                 const char* error_msg = report.error_message ? report.error_message : "Unknown error";
                 std::cerr << "Compression failed: " << error_msg << "\n";
-                pcc_runtime_release_report(handle, &report);
-                pcc_runtime_destroy(handle);
+                pcc_handle_release_report(handle, &report);
+                pcc_handle_destroy(handle);
                 return 1;
             }
 
@@ -129,8 +129,8 @@ int main(int argc, char** argv) {
                 std::cerr << error_acc.str() << "\n";
             }
 
-            pcc_runtime_release_report(handle, &report);
-            pcc_runtime_destroy(handle);
+            pcc_handle_release_report(handle, &report);
+            pcc_handle_destroy(handle);
 
         } else if (command == "optimize") {
             std::vector<std::string> args(argv + 2, argv + argc);

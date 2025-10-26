@@ -64,20 +64,20 @@ target_include_directories(${PROJECT_NAME}_core PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_compile_features(${PROJECT_NAME}_core PUBLIC cxx_std_17)
 
-# Runtime integration library
-add_library(${PROJECT_NAME}_runtime
+# Compression integration library
+add_library(${PROJECT_NAME}_bridge
   src/bridge/Bridge.cpp
-  src/common/RuntimeHelpers.cpp
+  src/common/CompressionDataUtils.cpp
   src/common/CompressionArtifacts.cpp
-  src/services/RuntimeCompressionService.cpp
+  src/services/CompressionExecutor.cpp
   src/io/CompressionReportBuilder.cpp
   src/io/Hdf5Writers.cpp
 )
-target_link_libraries(${PROJECT_NAME}_runtime PUBLIC ${PROJECT_NAME}_core)
-target_include_directories(${PROJECT_NAME}_runtime PUBLIC
+target_link_libraries(${PROJECT_NAME}_bridge PUBLIC ${PROJECT_NAME}_core)
+target_include_directories(${PROJECT_NAME}_bridge PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-target_compile_features(${PROJECT_NAME}_runtime PUBLIC cxx_std_17)
+target_compile_features(${PROJECT_NAME}_bridge PUBLIC cxx_std_17)
 
 # Add OpenMP support if available
 if(OpenMP_CXX_FOUND)
@@ -90,11 +90,11 @@ target_link_libraries(${PROJECT_NAME}_core PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_H
 
 # Main executable
 add_executable(${PROJECT_NAME}_cli src/apps/cli_main.cpp)
-target_link_libraries(${PROJECT_NAME}_cli ${PROJECT_NAME}_core ${PROJECT_NAME}_runtime)
+target_link_libraries(${PROJECT_NAME}_cli ${PROJECT_NAME}_core ${PROJECT_NAME}_bridge)
 
 # ROS2 Node executable
 add_executable(${PROJECT_NAME}_node src/ros/pointcloud_compressor_node.cpp)
-target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME}_runtime)
+target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME}_bridge)
 ament_target_dependencies(${PROJECT_NAME}_node
   rclcpp
   std_msgs
@@ -122,7 +122,7 @@ ament_target_dependencies(block_size_optimizer_node
 # Installation
 install(TARGETS ${PROJECT_NAME}_core
   DESTINATION lib)
-install(TARGETS ${PROJECT_NAME}_runtime
+install(TARGETS ${PROJECT_NAME}_bridge
   DESTINATION lib)
 install(TARGETS ${PROJECT_NAME}_cli ${PROJECT_NAME}_node block_size_optimizer_node
   DESTINATION lib/${PROJECT_NAME})
@@ -148,10 +148,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_end_to_end ${PROJECT_NAME}_core)
 
   ament_add_gtest(test_bridge_api test/test_bridge_api.cpp)
-  target_link_libraries(test_bridge_api ${PROJECT_NAME}_runtime)
+  target_link_libraries(test_bridge_api ${PROJECT_NAME}_bridge)
 
-  ament_add_gtest(test_runtime_compression_service test/test_runtime_compression_service.cpp)
-  target_link_libraries(test_runtime_compression_service ${PROJECT_NAME}_runtime)
+  ament_add_gtest(test_compression_executor test/test_compression_executor.cpp)
+  target_link_libraries(test_compression_executor ${PROJECT_NAME}_bridge)
 endif()
 
 # Export dependencies
