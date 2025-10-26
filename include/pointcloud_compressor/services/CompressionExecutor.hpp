@@ -4,6 +4,7 @@
 #ifndef POINTCLOUD_COMPRESSOR_SERVICES_COMPRESSION_EXECUTOR_HPP
 #define POINTCLOUD_COMPRESSOR_SERVICES_COMPRESSION_EXECUTOR_HPP
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -12,8 +13,12 @@
 #include "pointcloud_compressor/io/Hdf5Writers.hpp"
 #include "pointcloud_compressor/utils/ErrorAccumulator.hpp"
 #include "pointcloud_compressor/bridge/Bridge.hpp"
+#include "pointcloud_compressor/config/ConfigTransforms.hpp"
 
 namespace pointcloud_compressor::services {
+
+using CompressionSuccessCallback =
+    std::function<void(const PCCCompressionReport&, pointcloud_compressor::io::CompressionReportBuilder&)>;
 
 class CompressionExecutor {
 public:
@@ -36,6 +41,10 @@ private:
     PCCCompressionReport makeErrorReport(const std::string& message);
     void clearBuffers();
 };
+
+bool runCompression(const pointcloud_compressor::config::CompressionSetup& setup,
+                    const CompressionSuccessCallback& on_success,
+                    std::string* error_message = nullptr);
 
 }  // namespace pointcloud_compressor::services
 

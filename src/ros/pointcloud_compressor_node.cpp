@@ -19,31 +19,14 @@
 #include "pointcloud_compressor/config/CompressorConfig.hpp"
 #include "pointcloud_compressor/config/ConfigTransforms.hpp"
 #include "pointcloud_compressor/msg/pattern_dictionary.hpp"
-
-extern "C" {
-
-struct PCCCompressionHandle;
-PCCCompressionHandle* pcc_handle_create();
-void pcc_handle_destroy(PCCCompressionHandle* handle);
-PCCCompressionReport pcc_handle_compress(PCCCompressionHandle* handle,
-                                         const PCCCompressionRequest* request);
-void pcc_handle_release_report(PCCCompressionHandle* handle,
-                               PCCCompressionReport* report);
-
-}  // extern "C"
+#include "pointcloud_compressor/services/CompressionExecutor.hpp"
 
 class PointCloudCompressorNode : public rclcpp::Node {
 public:
     PointCloudCompressorNode()
-        : rclcpp::Node("pointcloud_compressor_node"),
-          compression_handle_(pcc_handle_create()) {
+        : rclcpp::Node("pointcloud_compressor_node") {
         declareParameters();
         loadParameters();
-
-        if (!compression_handle_) {
-            RCLCPP_ERROR(get_logger(), "Failed to initialize compression handle");
-            return;
-        }
 
         if (!validateConfiguration()) {
             return;
@@ -55,12 +38,7 @@ public:
         compressAndPublish();
     }
 
-    ~PointCloudCompressorNode() override {
-        if (compression_handle_) {
-            pcc_handle_destroy(compression_handle_);
-            compression_handle_ = nullptr;
-        }
-    }
+    ~PointCloudCompressorNode() override = default;
 
 private:
     void declareParameters() {
@@ -171,11 +149,6 @@ private:
     }
 
     void compressAndPublish() {
-        if (!compression_handle_) {
-            RCLCPP_ERROR(get_logger(), "Compression handle is not available");
-            return;
-        }
-
         auto setup = pointcloud_compressor::config::buildCompressionSetup(configFromParameters());
         auto errors = pointcloud_compressor::config::validateCompressionSetup(setup);
         if (!errors.empty()) {
@@ -185,32 +158,34 @@ private:
             return;
         }
 
-        auto report = pcc_handle_compress(compression_handle_, &setup.request);
+        std::string error_message;
+        const bool success = pointcloud_compressor::services::runCompression(
+            setup,
+            [this](const PCCCompressionReport& report,
+                   pointcloud_compressor::io::CompressionReportBuilder&) {
+                auto msg = createPatternDictionaryMessage(report);
+                pattern_dict_pub_->publish(msg);
 
-        if (!report.success) {
-            const char* message = report.error_message ? report.error_message : "Unknown error";
-            RCLCPP_ERROR(get_logger(), "Compression failed: %s", message);
-            pcc_handle_release_report(compression_handle_, &report);
+                if (publish_occupied_voxel_markers_ && marker_pub_) {
+                    auto markers = createOccupiedVoxelMarkers(report);
+                    if (markers.has_value()) {
+                        marker_pub_->publish(markers.value());
+                    } else {
+                        RCLCPP_WARN(get_logger(), "Failed to create occupied voxel markers");
+                    }
+                }
+
+                if (report.error_message && report.error_message[0] != '\0') {
+                    RCLCPP_WARN(get_logger(), "Compression warning: %s", report.error_message);
+                }
+            },
+            &error_message);
+
+        if (!success) {
+            RCLCPP_ERROR(get_logger(), "Compression failed: %s", error_message.c_str());
             return;
         }
 
-        auto msg = createPatternDictionaryMessage(report);
-        pattern_dict_pub_->publish(msg);
-
-        if (publish_occupied_voxel_markers_ && marker_pub_) {
-            auto markers = createOccupiedVoxelMarkers(report);
-            if (markers.has_value()) {
-                marker_pub_->publish(markers.value());
-            } else {
-                RCLCPP_WARN(get_logger(), "Failed to create occupied voxel markers");
-            }
-        }
-
-        if (report.error_message && report.error_message[0] != '\0') {
-            RCLCPP_WARN(get_logger(), "Compression warning: %s", report.error_message);
-        }
-
-        pcc_handle_release_report(compression_handle_, &report);
         RCLCPP_INFO(get_logger(), "Processing completed!!");
     }
 
@@ -350,7 +325,6 @@ private:
         return marker_array;
     }
 
-    PCCCompressionHandle* compression_handle_;
     rclcpp::Publisher<pointcloud_compressor::msg::PatternDictionary>::SharedPtr pattern_dict_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 

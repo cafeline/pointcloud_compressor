@@ -120,4 +120,41 @@ void CompressionExecutor::clearBuffers() {
     map_data_ = pointcloud_compressor::CompressedMapData{};
 }
 
+bool runCompression(const pointcloud_compressor::config::CompressionSetup& setup,
+                    const CompressionSuccessCallback& on_success,
+                    std::string* error_message) {
+    if (!on_success) {
+        if (error_message) {
+            *error_message = "Compression callback is not set";
+        }
+        return false;
+    }
+
+    CompressionExecutor executor;
+    auto report = executor.compress(setup.request);
+
+    auto releaseReport = [&]() {
+        executor.release(report);
+    };
+
+    if (!report.success) {
+        if (error_message) {
+            *error_message = report.error_message ? report.error_message : "Unknown error";
+        }
+        releaseReport();
+        return false;
+    }
+
+    pointcloud_compressor::io::CompressionReportBuilder builder;
+    try {
+        on_success(report, builder);
+    } catch (...) {
+        releaseReport();
+        throw;
+    }
+
+    releaseReport();
+    return true;
+}
+
 }  // namespace pointcloud_compressor::services

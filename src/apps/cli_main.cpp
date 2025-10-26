@@ -7,10 +7,9 @@
 #include "pointcloud_compressor/core/BlockSizeReportFormatter.hpp"
 #include "pointcloud_compressor/core/CompressionReportFormatter.hpp"
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
-#include "pointcloud_compressor/io/CompressionReportBuilder.hpp"
 #include "pointcloud_compressor/io/Hdf5Writers.hpp"
-#include "pointcloud_compressor/bridge/Bridge.hpp"
 #include "pointcloud_compressor/utils/ErrorAccumulator.hpp"
+#include "pointcloud_compressor/services/CompressionExecutor.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -33,6 +32,7 @@ using pointcloud_compressor::config::loadCompressorConfigFromYaml;
 using pointcloud_compressor::config::parseConfigPath;
 using pointcloud_compressor::config::validateCompressionSetup;
 using pointcloud_compressor::io::CompressionReportBuilder;
+using pointcloud_compressor::services::runCompression;
 
 void printUsage(const char* program_name) {
     std::cout << "Usage: " << program_name << " <command> [options]\n";
@@ -84,53 +84,50 @@ int main(int argc, char** argv) {
                 return 1;
             }
 
-            PCCCompressionHandle* handle = pcc_handle_create();
-            if (!handle) {
-                std::cerr << "Failed to initialize compression handle.\n";
-                return 1;
-            }
-
-            auto report = pcc_handle_compress(handle, &setup.request);
-            if (!report.success) {
-                const char* error_msg = report.error_message ? report.error_message : "Unknown error";
-                std::cerr << "Compression failed: " << error_msg << "\n";
-                pcc_handle_release_report(handle, &report);
-                pcc_handle_destroy(handle);
-                return 1;
-            }
-
-            CompressionReportBuilder builder;
-            auto map_data = builder.toCompressedMapData(report,
-                                                       setup.settings.voxel_size,
-                                                       setup.settings.block_size);
-
             pointcloud_compressor::utils::ErrorAccumulator error_acc;
-            if (setup.request.save_hdf5 && setup.request.hdf5_output_path) {
-                std::string err;
-                if (!pointcloud_compressor::io::writeCompressedMap(setup.config.hdf5_output_file, map_data, err)) {
-                    error_acc.add(err);
-                } else {
-                    printCompressionSummary(report, setup.config.hdf5_output_file);
-                }
-            } else {
-                std::cout << "Compression successful. No archive was saved (save_hdf5=false).\n";
-            }
+            std::string compression_error;
+            const bool compression_success = runCompression(
+                setup,
+                [&](const PCCCompressionReport& report,
+                    pointcloud_compressor::io::CompressionReportBuilder& builder) {
+                    auto map_data = builder.toCompressedMapData(report,
+                                                                setup.settings.voxel_size,
+                                                                setup.settings.block_size);
 
-            if (setup.request.save_raw_hdf5 && setup.request.raw_hdf5_output_path) {
-                std::string err;
-                if (pointcloud_compressor::io::writeRawVoxelGrid(setup.config.raw_hdf5_output_file, report, err)) {
-                    std::cout << "  Raw voxel grid   : " << setup.config.raw_hdf5_output_file << "\n";
-                } else {
-                    error_acc.add(err);
-                }
+                    if (setup.request.save_hdf5 && setup.request.hdf5_output_path) {
+                        std::string err;
+                        if (!pointcloud_compressor::io::writeCompressedMap(setup.config.hdf5_output_file,
+                                                                           map_data,
+                                                                           err)) {
+                            error_acc.add(err);
+                        } else {
+                            printCompressionSummary(report, setup.config.hdf5_output_file);
+                        }
+                    } else {
+                        std::cout << "Compression successful. No archive was saved (save_hdf5=false).\n";
+                    }
+
+                    if (setup.request.save_raw_hdf5 && setup.request.raw_hdf5_output_path) {
+                        std::string err;
+                        if (pointcloud_compressor::io::writeRawVoxelGrid(setup.config.raw_hdf5_output_file,
+                                                                         report,
+                                                                         err)) {
+                            std::cout << "  Raw voxel grid   : " << setup.config.raw_hdf5_output_file << "\n";
+                        } else {
+                            error_acc.add(err);
+                        }
+                    }
+                },
+                &compression_error);
+
+            if (!compression_success) {
+                std::cerr << "Compression failed: " << compression_error << "\n";
+                return 1;
             }
 
             if (!error_acc.empty()) {
                 std::cerr << error_acc.str() << "\n";
             }
-
-            pcc_handle_release_report(handle, &report);
-            pcc_handle_destroy(handle);
 
             std::cout << "Processing completed!!\n";
 
