@@ -4,6 +4,7 @@
 #include "pointcloud_compressor/config/CliConfigParser.hpp"
 #include "pointcloud_compressor/config/ConfigTransforms.hpp"
 #include "pointcloud_compressor/config/CompressorConfig.hpp"
+#include "pointcloud_compressor/cli/OptimizeWorkflow.hpp"
 #include "pointcloud_compressor/core/BlockSizeReportFormatter.hpp"
 #include "pointcloud_compressor/core/CompressionReportFormatter.hpp"
 #include "pointcloud_compressor/core/PointCloudCompressor.hpp"
@@ -21,13 +22,9 @@
 
 namespace {
 
-using pointcloud_compressor::PointCloudCompressor;
-using pointcloud_compressor::CompressionSettings;
-using pointcloud_compressor::config::BlockSizeOptimizationConfig;
 using pointcloud_compressor::config::CompressionSetup;
 using pointcloud_compressor::config::CompressorConfig;
 using pointcloud_compressor::config::buildCompressionSetup;
-using pointcloud_compressor::config::loadBlockSizeOptimizationConfigFromYaml;
 using pointcloud_compressor::config::loadCompressorConfigFromYaml;
 using pointcloud_compressor::config::parseConfigPath;
 using pointcloud_compressor::config::validateCompressionSetup;
@@ -142,38 +139,30 @@ int main(int argc, char** argv) {
                 return 1;
             }
 
-            BlockSizeOptimizationConfig opt_config;
             try {
-                opt_config = loadBlockSizeOptimizationConfigFromYaml(config_path);
-            } catch (const std::exception& e) {
-                std::cerr << "Failed to load config: " << e.what() << "\n";
-                return 1;
-            }
+                const auto result = pointcloud_compressor::cli::runOptimizeWorkflow(config_path);
 
-            auto errors = opt_config.validate(true);
-            if (!errors.empty()) {
-                for (const auto& err : errors) {
-                    std::cerr << "Config error: " << err << "\n";
+                std::cout << "Optimal compression settings:\n";
+                std::cout << "  Voxel size       : " << result.optimal_settings.voxel_size << "\n";
+                std::cout << "  Block size       : " << result.optimal_settings.block_size << "\n";
+                std::cout << formatBlockSizeSummary(result.block_result, result.verbose) << "\n";
+                if (!result.compression_summary.empty()) {
+                    std::cout << result.compression_summary << "\n";
                 }
+                if (!result.hdf5_output_file.empty()) {
+                    std::cout << "  Output archive   : " << result.hdf5_output_file << "\n";
+                } else {
+                    std::cout << "  Output archive   : <not saved>\n";
+                }
+                if (!result.raw_hdf5_output_file.empty()) {
+                    std::cout << "  Raw voxel grid   : " << result.raw_hdf5_output_file << "\n";
+                }
+
+                std::cout << "Processing completed!!\n";
+            } catch (const std::exception& e) {
+                std::cerr << "Optimization failed: " << e.what() << "\n";
                 return 1;
             }
-
-            CompressionSettings base_settings = settingsFromConfig(opt_config.base);
-            PointCloudCompressor compressor(base_settings);
-
-            auto optimal_settings = compressor.findOptimalSettings(opt_config.base.input_file);
-
-            std::cout << "Optimal compression settings:\n";
-            std::cout << "  Voxel size       : " << optimal_settings.voxel_size << "\n";
-            std::cout << "  Block size       : " << optimal_settings.block_size << "\n";
-            auto block_result = compressor.findOptimalBlockSize(opt_config.base.input_file,
-                                                                 opt_config.min_block_size,
-                                                                 opt_config.max_block_size,
-                                                                 opt_config.step_size,
-                                                                 opt_config.verbose);
-            std::cout << formatBlockSizeSummary(block_result, opt_config.verbose) << "\n";
-
-            std::cout << "Processing completed!!\n";
 
         } else {
             std::cerr << "Error: Unknown command '" << command << "'\n";

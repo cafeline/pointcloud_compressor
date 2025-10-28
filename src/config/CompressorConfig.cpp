@@ -17,6 +17,14 @@ YAML::Node extractParameterNode(const YAML::Node& root) {
         return YAML::Node();
     }
 
+    if (root["block_size_optimizer"]) {
+        auto node = root["block_size_optimizer"];
+        if (node["ros__parameters"]) {
+            return node["ros__parameters"];
+        }
+        return node;
+    }
+
     if (root["pointcloud_compressor_node"]) {
         auto node = root["pointcloud_compressor_node"];
         if (node["ros__parameters"]) {
@@ -73,7 +81,6 @@ BlockSizeOptimizationConfig loadBlockSizeOptimizationConfigFromYaml(const std::s
     config.min_block_size = readOrDefault<int>(params, "min_block_size", config.min_block_size);
     config.max_block_size = readOrDefault<int>(params, "max_block_size", config.max_block_size);
     config.step_size = readOrDefault<int>(params, "step_size", config.step_size);
-    config.auto_compress = readOrDefault<bool>(params, "auto_compress", config.auto_compress);
     config.verbose = readOrDefault<bool>(params, "verbose", config.verbose);
     return config;
 }

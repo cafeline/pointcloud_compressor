@@ -11,8 +11,8 @@ def generate_launch_description():
     pkg_share = FindPackageShare('pointcloud_compressor')
     
     # Declare launch arguments
-    config_file_arg = DeclareLaunchArgument(
-        'config_file',
+    params_file_arg = DeclareLaunchArgument(
+        'params_file',
         default_value=PathJoinSubstitution([
             pkg_share,
             'config',
@@ -24,49 +24,37 @@ def generate_launch_description():
     input_file_arg = DeclareLaunchArgument(
         'input_file',
         default_value='',
-        description='Path to input PCD file (overrides config file if provided)'
+        description='Path to input PCD file (overrides parameter file if provided)'
     )
     
     min_block_size_arg = DeclareLaunchArgument(
         'min_block_size',
         default_value='0',
-        description='Minimum block size (0 to use config file value)'
+        description='Minimum block size (0 to use parameter file value)'
     )
     
     max_block_size_arg = DeclareLaunchArgument(
         'max_block_size',
         default_value='0',
-        description='Maximum block size (0 to use config file value)'
+        description='Maximum block size (0 to use parameter file value)'
     )
     
     step_size_arg = DeclareLaunchArgument(
         'step_size',
         default_value='0',
-        description='Step size for testing (0 to use config file value)'
+        description='Step size for testing (0 to use parameter file value)'
     )
     
     voxel_size_arg = DeclareLaunchArgument(
         'voxel_size',
         default_value='0.0',
-        description='Voxel size (0.0 to use config file value)'
+        description='Voxel size (0.0 to use parameter file value)'
     )
     
     verbose_arg = DeclareLaunchArgument(
         'verbose',
         default_value='false',
         description='Enable verbose output'
-    )
-    
-    auto_compress_arg = DeclareLaunchArgument(
-        'auto_compress',
-        default_value='false',
-        description='Automatically compress with optimal settings'
-    )
-    
-    output_prefix_arg = DeclareLaunchArgument(
-        'output_prefix',
-        default_value='',
-        description='Output prefix for compressed files'
     )
     
     run_once_arg = DeclareLaunchArgument(
@@ -77,7 +65,7 @@ def generate_launch_description():
     
     # Create node with conditional parameter overrides
     def create_parameters():
-        params = [LaunchConfiguration('config_file')]
+        params = [LaunchConfiguration('params_file')]
         
         # Add command-line overrides if provided
         overrides = {}
@@ -105,13 +93,6 @@ def generate_launch_description():
         if LaunchConfiguration('verbose').perform(None) == 'true':
             overrides['verbose'] = True
             
-        if LaunchConfiguration('auto_compress').perform(None) == 'true':
-            overrides['auto_compress'] = True
-            
-        output_prefix = LaunchConfiguration('output_prefix').perform(None)
-        if output_prefix:
-            overrides['output_prefix'] = output_prefix
-            
         if LaunchConfiguration('run_once').perform(None) == 'false':
             overrides['run_once'] = False
             
@@ -126,7 +107,7 @@ def generate_launch_description():
         executable='block_size_optimizer_node',
         name='block_size_optimizer',
         output='screen',
-        parameters=[LaunchConfiguration('config_file')],
+        parameters=[LaunchConfiguration('params_file')],
         remappings=[
             # Add any topic remappings if needed
         ]
@@ -134,15 +115,13 @@ def generate_launch_description():
     
     return LaunchDescription([
         # Arguments
-        config_file_arg,
+        params_file_arg,
         input_file_arg,
         min_block_size_arg,
         max_block_size_arg,
         step_size_arg,
         voxel_size_arg,
         verbose_arg,
-        auto_compress_arg,
-        output_prefix_arg,
         run_once_arg,
         # Node
         optimizer_node

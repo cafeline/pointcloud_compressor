@@ -13,13 +13,5 @@ block_size_optimizer:
 
     # Enable verbose output
     verbose: true
-
-    # Automatically compress with optimal settings after optimization
-    auto_compress: false
-
-    # Output prefix for compressed files (if auto_compress is true)
-    # If empty, uses input filename + "_optimized"
-    output_prefix: ""
-
     # Run optimization once and shutdown (true) or wait for service calls (false)
     run_once: true

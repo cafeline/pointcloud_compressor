@@ -79,6 +79,15 @@ target_include_directories(${PROJECT_NAME}_bridge PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_compile_features(${PROJECT_NAME}_bridge PUBLIC cxx_std_17)
 
+add_library(${PROJECT_NAME}_cli_support
+  src/apps/OptimizeWorkflow.cpp
+)
+target_link_libraries(${PROJECT_NAME}_cli_support PUBLIC ${PROJECT_NAME}_bridge)
+target_include_directories(${PROJECT_NAME}_cli_support PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(${PROJECT_NAME}_cli_support PUBLIC cxx_std_17)
+
 # Add OpenMP support if available
 if(OpenMP_CXX_FOUND)
   target_link_libraries(${PROJECT_NAME}_core PUBLIC OpenMP::OpenMP_CXX)
@@ -90,7 +99,7 @@ target_link_libraries(${PROJECT_NAME}_core PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_H
 
 # Main executable
 add_executable(${PROJECT_NAME}_cli src/apps/cli_main.cpp)
-target_link_libraries(${PROJECT_NAME}_cli ${PROJECT_NAME}_core ${PROJECT_NAME}_bridge)
+target_link_libraries(${PROJECT_NAME}_cli ${PROJECT_NAME}_cli_support)
 
 # ROS2 Node executable
 add_executable(${PROJECT_NAME}_node src/ros/pointcloud_compressor_node.cpp)
@@ -126,6 +135,8 @@ install(TARGETS ${PROJECT_NAME}_bridge
   DESTINATION lib)
 install(TARGETS ${PROJECT_NAME}_cli ${PROJECT_NAME}_node block_size_optimizer_node
   DESTINATION lib/${PROJECT_NAME})
+install(TARGETS ${PROJECT_NAME}_cli_support
+  DESTINATION lib)
 
 install(DIRECTORY include/
   DESTINATION include/)
@@ -152,6 +163,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_compression_executor test/test_compression_executor.cpp)
   target_link_libraries(test_compression_executor ${PROJECT_NAME}_bridge)
+
+  ament_add_gtest(test_cli_optimize test/test_cli_optimize.cpp)
+  target_link_libraries(test_cli_optimize ${PROJECT_NAME}_cli_support)
 endif()
 
 # Export dependencies

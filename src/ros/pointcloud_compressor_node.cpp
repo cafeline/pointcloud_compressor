@@ -43,7 +43,6 @@ public:
 private:
     void declareParameters() {
         this->declare_parameter("input_file", "");
-        this->declare_parameter("config_file", "");
         this->declare_parameter("voxel_size", 0.01);
         this->declare_parameter("block_size", 8);
         this->declare_parameter("min_points_threshold", 1);
@@ -67,30 +66,6 @@ private:
         save_raw_hdf5_ = this->get_parameter("save_raw_hdf5").as_bool();
         raw_hdf5_output_file_ = this->get_parameter("raw_hdf5_output_file").as_string();
 
-        const std::string config_path = this->get_parameter("config_file").as_string();
-        if (!config_path.empty()) {
-            try {
-                auto config = pointcloud_compressor::config::loadCompressorConfigFromYaml(config_path);
-                if (!config.input_file.empty()) {
-                    input_file_ = config.input_file;
-                }
-                voxel_size_ = config.voxel_size;
-                block_size_ = config.block_size;
-                min_points_threshold_ = config.min_points_threshold;
-                publish_occupied_voxel_markers_ = config.publish_occupied_voxel_markers;
-                save_hdf5_ = config.save_hdf5;
-                if (!config.hdf5_output_file.empty()) {
-                    hdf5_output_file_ = config.hdf5_output_file;
-                }
-                save_raw_hdf5_ = config.save_raw_hdf5;
-                if (!config.raw_hdf5_output_file.empty()) {
-                    raw_hdf5_output_file_ = config.raw_hdf5_output_file;
-                }
-            } catch (const std::exception& e) {
-                RCLCPP_ERROR(get_logger(), "Failed to load config file '%s': %s",
-                             config_path.c_str(), e.what());
-            }
-        }
     }
 
     bool validateConfiguration() {

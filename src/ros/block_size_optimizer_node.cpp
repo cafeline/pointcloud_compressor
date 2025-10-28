@@ -23,14 +23,11 @@ public:
     BlockSizeOptimizerNode() : Node("block_size_optimizer") {
         // Declare parameters with defaults
         this->declare_parameter<std::string>("input_file", "");
-        this->declare_parameter<std::string>("config_file", "");
         this->declare_parameter<int>("min_block_size", 4);
         this->declare_parameter<int>("max_block_size", 32);
         this->declare_parameter<int>("step_size", 1);
         this->declare_parameter<double>("voxel_size", 0.01);
         this->declare_parameter<bool>("verbose", false);
-        this->declare_parameter<bool>("auto_compress", false);
-        this->declare_parameter<std::string>("output_prefix", "");
         this->declare_parameter<bool>("run_once", true);
         
         // Publishers for results
@@ -45,28 +42,8 @@ public:
         step_size_ = this->get_parameter("step_size").as_int();
         voxel_size_ = this->get_parameter("voxel_size").as_double();
         verbose_ = this->get_parameter("verbose").as_bool();
-        auto_compress_ = this->get_parameter("auto_compress").as_bool();
-        output_prefix_ = this->get_parameter("output_prefix").as_string();
         run_once_ = this->get_parameter("run_once").as_bool();
 
-        const std::string config_path = this->get_parameter("config_file").as_string();
-        if (!config_path.empty()) {
-            try {
-                auto config = config::loadBlockSizeOptimizationConfigFromYaml(config_path);
-                if (!config.base.input_file.empty()) {
-                    input_file_ = config.base.input_file;
-                }
-                voxel_size_ = config.base.voxel_size;
-                min_block_size_ = config.min_block_size;
-                max_block_size_ = config.max_block_size;
-                step_size_ = config.step_size;
-                auto_compress_ = config.auto_compress;
-                verbose_ = config.verbose;
-            } catch (const std::exception& e) {
-                RCLCPP_ERROR(this->get_logger(), "Failed to load config file '%s': %s",
-                             config_path.c_str(), e.what());
-            }
-        }
 
         auto base_config = buildBaseConfig();
         compression_setup_ = pointcloud_compressor::config::buildCompressionSetup(base_config);
@@ -197,9 +174,7 @@ private:
         publishResults(result);
         
         // Auto compress if requested
-        if (auto_compress_) {
-            performCompression(result.optimal_block_size);
-        }
+        performCompression(result.optimal_block_size);
         
         // Shutdown if run_once mode
         if (run_once_) {
@@ -279,28 +254,26 @@ private:
     }
     
     void performCompression(int optimal_block_size) {
-        RCLCPP_INFO(this->get_logger(), 
-                   "=== Compressing with optimal block size %d ===", 
+        RCLCPP_INFO(this->get_logger(),
+                   "=== Compressing with optimal block size %d ===",
                    optimal_block_size);
         
-        // Update settings with optimal block size
         auto optimal_settings = compression_setup_.settings;
         optimal_settings.block_size = optimal_block_size;
         compressor_->updateSettings(optimal_settings);
         
-        // Perform compression
         auto compress_result = compressor_->compress(input_file_);
         
         if (compress_result.success) {
             RCLCPP_INFO(this->get_logger(), "Compression successful!");
-            RCLCPP_INFO(this->get_logger(), 
-                       "Original size: %zu bytes", compress_result.original_size);
-            RCLCPP_INFO(this->get_logger(), 
-                       "Compressed size: %zu bytes", compress_result.compressed_size);
-            RCLCPP_INFO(this->get_logger(), 
-                       "Compression ratio: %.6f", compress_result.compression_ratio);
+            RCLCPP_INFO(this->get_logger(),
+                        "Original size: %zu bytes", compress_result.original_size);
+            RCLCPP_INFO(this->get_logger(),
+                        "Compressed size: %zu bytes", compress_result.compressed_size);
+            RCLCPP_INFO(this->get_logger(),
+                        "Compression ratio: %.6f", compress_result.compression_ratio);
         } else {
-            RCLCPP_ERROR(this->get_logger(), 
+            RCLCPP_ERROR(this->get_logger(),
                         "Compression failed: %s", compress_result.error_message.c_str());
         }
     }
@@ -312,8 +285,6 @@ private:
     int step_size_;
     double voxel_size_;
     bool verbose_;
-    bool auto_compress_;
-    std::string output_prefix_;
     bool run_once_;
     
     // ROS interfaces

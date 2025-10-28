@@ -27,8 +27,29 @@ git clone <repository-url>
 cd pointcloud_compressor
 cmake -S . -B build -DBUILD_TESTING=OFF
 cmake --build build --target pointcloud_compressor_cli
-./build/pointcloud_compressor_cli compress input.pcd output.h5 --voxel-size 0.01 --block-size 8
+./build/pointcloud_compressor_cli compress path/to/pointcloud_compressor.yaml
 ```
+
+The CLI expects a single YAML configuration file. The layout matches the ROS 2 parameter files used by the nodes:
+
+```yaml
+# config/pointcloud_compressor.yaml
+pointcloud_compressor_node:
+  ros__parameters:
+    input_file: /absolute/path/to/map.pcd
+    voxel_size: 0.01
+    block_size: 8
+    save_hdf5: true
+    hdf5_output_file: /tmp/compressed_map.h5
+    save_raw_hdf5: false
+```
+To run block-size optimisation from the CLI, provide the optimisation YAML. The optimize command automatically performs a compression pass using the discovered settings and writes artifacts when `save_hdf5`/`save_raw_hdf5` are enabled:
+
+```bash
+./build/pointcloud_compressor_cli optimize path/to/block_size_optimizer.yaml
+```
+
+The same files can be re-used with the ROS 2 launch configuration.
 
 ## Compression artifacts and file formats
 
@@ -75,7 +96,7 @@ Compresses a point cloud file and publishes a PatternDictionary message together
 
 ### block_size_optimizer_node
 
-Evaluates compression performance for a range of block sizes and reports the best configuration. The node can execute once on startup or expose a trigger service for on-demand optimization, and optionally runs a final compression pass with the chosen block size.
+Evaluates compression performance for a range of block sizes and reports the best configuration. The node can execute once on startup or expose a trigger service for on-demand optimization, and always runs a final compression pass using the optimal block size.
 
 #### Subscribed Topics
 
@@ -107,6 +128,4 @@ Evaluates compression performance for a range of block sizes and reports the bes
 | `step_size` | `int` | `1` | Step size for block size sweep. |
 | `voxel_size` | `double` | `0.01` | Voxel size used during evaluation. |
 | `verbose` | `bool` | `false` | Enables detailed logging of intermediate ratios. |
-| `auto_compress` | `bool` | `false` | Runs a compression pass with the optimal block size after optimization. |
-| `output_prefix` | `string` | `""` | Prefix for artifacts when `auto_compress` is true. |
 | `run_once` | `bool` | `true` | Executes optimization immediately and shuts down upon completion. |

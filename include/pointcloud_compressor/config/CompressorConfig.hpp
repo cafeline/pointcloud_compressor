@@ -31,7 +31,6 @@ struct BlockSizeOptimizationConfig {
     int min_block_size = 4;
     int max_block_size = 32;
     int step_size = 1;
-    bool auto_compress = false;
     bool verbose = false;
 
     std::vector<std::string> validate(bool check_filesystem = true) const;
