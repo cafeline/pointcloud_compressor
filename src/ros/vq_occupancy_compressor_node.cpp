@@ -9,6 +9,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -225,14 +226,37 @@ private:
             return std::nullopt;
         }
 
-        const uint32_t dim_x = report.occupancy.dimensions[0];
-        const uint32_t dim_y = report.occupancy.dimensions[1];
-        const uint32_t dim_z = report.occupancy.dimensions[2];
+        uint32_t dim_x = report.occupancy.dimensions[0];
+        uint32_t dim_y = report.occupancy.dimensions[1];
+        uint32_t dim_z = report.occupancy.dimensions[2];
 
-        const std::size_t expected_size =
-            static_cast<std::size_t>(dim_x) *
-            static_cast<std::size_t>(dim_y) *
-            static_cast<std::size_t>(dim_z);
+        bool needs_rescale = (dim_x == 0 || dim_y == 0 || dim_z == 0);
+        std::size_t expected_size = 0;
+        if (!needs_rescale) {
+            expected_size = static_cast<std::size_t>(dim_x) *
+                            static_cast<std::size_t>(dim_y) *
+                            static_cast<std::size_t>(dim_z);
+            needs_rescale = expected_size != report.occupancy.size;
+        }
+
+        if (needs_rescale) {
+            const double vs = report.grid.voxel_size;
+            if (vs > 0.0) {
+                const double estimate_x = report.grid.dimensions[0] / vs;
+                const double estimate_y = report.grid.dimensions[1] / vs;
+                const double estimate_z = report.grid.dimensions[2] / vs;
+                dim_x = static_cast<uint32_t>(std::llround(std::max(0.0, estimate_x)));
+                dim_y = static_cast<uint32_t>(std::llround(std::max(0.0, estimate_y)));
+                dim_z = static_cast<uint32_t>(std::llround(std::max(0.0, estimate_z)));
+            }
+            expected_size = static_cast<std::size_t>(dim_x) *
+                            static_cast<std::size_t>(dim_y) *
+                            static_cast<std::size_t>(dim_z);
+        } else {
+            expected_size = static_cast<std::size_t>(dim_x) *
+                            static_cast<std::size_t>(dim_y) *
+                            static_cast<std::size_t>(dim_z);
+        }
 
         if (expected_size != report.occupancy.size) {
             RCLCPP_ERROR(get_logger(),
