@@ -53,6 +53,7 @@ set(CORE_SOURCES
   src/config/CompressorConfig.cpp
   src/config/CliConfigParser.cpp
   src/config/ConfigTransforms.cpp
+  src/utils/CompressionSummary.cpp
 )
 
 

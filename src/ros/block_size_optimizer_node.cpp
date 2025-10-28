@@ -11,6 +11,8 @@
 #include "vq_occupancy_compressor/config/ConfigTransforms.hpp"
 #include "vq_occupancy_compressor/core/VqOccupancyCompressor.hpp"
 #include "vq_occupancy_compressor/ros/BlockSizeOptimizerSummary.hpp"
+#include "vq_occupancy_compressor/ros/CompressionSummaryLogger.hpp"
+#include "vq_occupancy_compressor/utils/CompressionSummary.hpp"
 
 namespace vq_occupancy_compressor {
 
@@ -128,8 +130,10 @@ private:
             return;
         }
 
-        displayCompressionSummary(*compression_result, result.optimal_block_size);
-        publishResults(result.optimal_block_size, *compression_result);
+        auto metrics =
+            vq_occupancy_compressor::utils::computeSummaryMetrics(*compression_result);
+        vq_occupancy_compressor::ros::logCompressionSummary(this->get_logger(), metrics);
+        publishResults(result.optimal_block_size, *compression_result, metrics);
         
         
         if (run_once_) {
@@ -160,10 +164,13 @@ private:
         }
     }
     
-    void publishResults(int optimal_block_size, const CompressionResult& compression_result) {
+    void publishResults(
+        int optimal_block_size,
+        const CompressionResult& compression_result,
+        const vq_occupancy_compressor::utils::CompressionSummaryMetrics& metrics) {
         const auto summary_json =
             vq_occupancy_compressor::ros::buildOptimizationSummaryJson(optimal_block_size,
-                                                                       compression_result);
+                                                                       metrics);
 
         auto msg = std_msgs::msg::String();
         msg.data = summary_json;
@@ -243,109 +250,6 @@ private:
     config::CompressionSetup compression_setup_;
     
     std::optional<CompressionResult> last_compression_result_;
-    
-    void displayCompressionSummary(const CompressionResult& compression_result,
-                                   int optimal_block_size) {
-        const VoxelGrid& grid = compression_result.voxel_grid;
-        VoxelCoord dims = grid.getDimensions();
-        size_t total_voxels = static_cast<size_t>(dims.x) * dims.y * dims.z;
-        if (total_voxels == 0) {
-            RCLCPP_WARN(this->get_logger(),
-                        "Voxel grid is empty; skipping detailed comparison.");
-            return;
-        }
-        size_t occupied_voxels = grid.getOccupiedVoxelCount();
-        size_t one_byte_per_voxel_size = total_voxels;
-        size_t one_bit_per_voxel_size = (total_voxels + 7) / 8;
-
-        const double voxel_size = compression_result.voxel_size > 0.0f
-                                      ? static_cast<double>(compression_result.voxel_size)
-                                      : voxel_size_;
-        double world_size_x = dims.x * voxel_size;
-        double world_size_y = dims.y * voxel_size;
-        double world_size_z = dims.z * voxel_size;
-
-        double occupancy_percent =
-            static_cast<double>(total_voxels) > 0.0
-                ? (100.0 * static_cast<double>(occupied_voxels) /
-                   static_cast<double>(total_voxels))
-                : 0.0;
-
-        RCLCPP_INFO(this->get_logger(),
-                   "\n============ Final Summary ============");
-        RCLCPP_INFO(this->get_logger(),
-                    "Real-world scale: %.1fm x %.1fm x %.1fm",
-                    world_size_x, world_size_y, world_size_z);
-        RCLCPP_INFO(this->get_logger(),
-                    "Total voxels: %zu", total_voxels);
-        RCLCPP_INFO(this->get_logger(),
-                    "Occupied voxels: %zu (%.2f%%)",
-                    occupied_voxels,
-                    occupancy_percent);
-        RCLCPP_INFO(this->get_logger(),
-                    "1 byte/voxel map size: %zu bytes",
-                    one_byte_per_voxel_size);
-        RCLCPP_INFO(this->get_logger(),
-                    "1 bit/voxel map size: %zu bytes",
-                    one_bit_per_voxel_size);
-
-        size_t dictionary_bytes = 0;
-        for (const auto& pattern : compression_result.pattern_dictionary) {
-            dictionary_bytes += pattern.size();
-        }
-        const size_t index_entry_bytes = (compression_result.index_bit_size + 7) / 8;
-        size_t index_bytes = compression_result.block_indices.size() * index_entry_bytes;
-        size_t compressed_size = compression_result.compressed_size;
-        if (compressed_size == 0) {
-            compressed_size = dictionary_bytes + index_bytes;
-        }
-
-        int effective_block_size = compression_result.block_size > 0
-                                       ? compression_result.block_size
-                                       : optimal_block_size;
-        int x_blocks =
-            effective_block_size > 0 ? (dims.x + effective_block_size - 1) / effective_block_size : 0;
-        int y_blocks =
-            effective_block_size > 0 ? (dims.y + effective_block_size - 1) / effective_block_size : 0;
-        int z_blocks =
-            effective_block_size > 0 ? (dims.z + effective_block_size - 1) / effective_block_size : 0;
-        size_t total_blocks = static_cast<size_t>(x_blocks) * y_blocks * z_blocks;
-
-        float compression_vs_one_byte = one_byte_per_voxel_size > 0
-            ? static_cast<float>(compressed_size) / static_cast<float>(one_byte_per_voxel_size)
-            : 0.0f;
-        float compression_vs_one_bit = one_bit_per_voxel_size > 0
-            ? static_cast<float>(compressed_size) / static_cast<float>(one_bit_per_voxel_size)
-            : 0.0f;
-
-        RCLCPP_INFO(this->get_logger(),
-                    "Compressed map (block_size=%d):", effective_block_size);
-        RCLCPP_INFO(this->get_logger(),
-                    "  - Codebook: %zu bytes", dictionary_bytes);
-        RCLCPP_INFO(this->get_logger(),
-                    "  - Index map: %zu bytes", index_bytes);
-        RCLCPP_INFO(this->get_logger(),
-                    "  - Total: %zu bytes", compressed_size);
-        if (total_blocks > 0) {
-            RCLCPP_INFO(this->get_logger(),
-                        "  - Blocks: %d x %d x %d = %zu",
-                        x_blocks, y_blocks, z_blocks, total_blocks);
-        }
-        if (one_byte_per_voxel_size > 0) {
-            RCLCPP_INFO(this->get_logger(),
-                        "Compression ratio (vs 1 byte/voxel): %.6f (%.1fx smaller)",
-                        compression_vs_one_byte,
-                        compression_vs_one_byte > 0.0f ? (1.0f / compression_vs_one_byte) : 0.0f);
-        }
-        if (one_bit_per_voxel_size > 0) {
-            RCLCPP_INFO(this->get_logger(),
-                        "Compression ratio (vs 1 bit/voxel): %.6f (%.1fx smaller)",
-                        compression_vs_one_bit,
-                        compression_vs_one_bit > 0.0f ? (1.0f / compression_vs_one_bit) : 0.0f);
-        }
-        RCLCPP_INFO(this->get_logger(),
-                    "========================================");
-    }
 };
 
 } 

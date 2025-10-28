@@ -20,6 +20,8 @@
 #include "vq_occupancy_compressor/config/ConfigTransforms.hpp"
 #include "vq_occupancy_compressor/msg/pattern_dictionary.hpp"
 #include "vq_occupancy_compressor/services/CompressionExecutor.hpp"
+#include "vq_occupancy_compressor/ros/CompressionSummaryLogger.hpp"
+#include "vq_occupancy_compressor/utils/CompressionSummary.hpp"
 
 class VqOccupancyCompressorNode : public rclcpp::Node {
 public:
@@ -153,6 +155,8 @@ private:
                 if (report.error_message && report.error_message[0] != '\0') {
                     RCLCPP_WARN(get_logger(), "Compression warning: %s", report.error_message);
                 }
+
+                logCompressionSummary(report);
             },
             &error_message);
 
@@ -313,6 +317,17 @@ private:
     bool save_raw_hdf5_{false};
     std::string raw_hdf5_output_file_;
     double bounding_box_margin_ratio_{0.0};
+
+    void logCompressionSummary(const PCCCompressionReport& report) {
+        auto metrics =
+            vq_occupancy_compressor::utils::computeSummaryMetrics(report);
+        if (metrics.total_voxels == 0) {
+            RCLCPP_WARN(get_logger(),
+                        "Voxel grid is empty; skipping detailed summary.");
+            return;
+        }
+        vq_occupancy_compressor::ros::logCompressionSummary(get_logger(), metrics);
+    }
 };
 
 int main(int argc, char** argv) {
