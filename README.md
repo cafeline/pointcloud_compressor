@@ -1,6 +1,7 @@
-# pointcloud_compressor: voxel dictionary compression for ROS 2 and CLI
+# pointcloud_compressor: lossless vector-quantized 3D occupancy grid compression for ROS 2 and CLI
 
-`pointcloud_compressor` provides a reusable point cloud compression pipeline based on voxel grids and pattern dictionaries. The package offers both ROS 2 nodes for publishing compressed map data and a standalone CLI for offline workflows, enabling the same core compressor to be reused across robotics and non-ROS tooling.
+This program performs lossless compression of occupancy grid maps, allowing the compressed map data to be used directly. The maps are compressed using vector quantization. The compressed map retains binary occupied/free data and does not include unknown cells. As input, it supports binary PCD and PLY files, and it runs both on ROS 2 and in a standalone CLI environment.
+
 
 ## ROS 2 version
 
