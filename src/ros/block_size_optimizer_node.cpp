@@ -6,15 +6,11 @@
 #include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_srvs/srv/trigger.hpp>
-#include <filesystem>
-#include <iomanip>
+#include <optional>
 #include "vq_occupancy_compressor/config/CompressorConfig.hpp"
 #include "vq_occupancy_compressor/config/ConfigTransforms.hpp"
-#include "vq_occupancy_compressor/report/ReportUtilities.hpp"
 #include "vq_occupancy_compressor/core/VqOccupancyCompressor.hpp"
-#include "vq_occupancy_compressor/core/VoxelProcessor.hpp"
-#include "vq_occupancy_compressor/io/PcdIO.hpp"
-#include "vq_occupancy_compressor/io/PlyIO.hpp"
+#include "vq_occupancy_compressor/ros/BlockSizeOptimizerSummary.hpp"
 
 namespace vq_occupancy_compressor {
 
@@ -123,58 +119,17 @@ private:
             return;
         }
         
-        auto summary = formatBlockSizeSummary(result, verbose_);
-        for (const auto& line : {std::string("=== Optimization Results ==="), summary}) {
-            RCLCPP_INFO(this->get_logger(), "%s", line.c_str());
+        const CompressionResult* compression_result = nullptr;
+        if (result.optimal_block_size > 0) {
+            compression_result = performCompression(result.optimal_block_size);
         }
-        
-        
-        last_result_ = result;
-        
-        
-        
-        calculateAndDisplay1ByteComparison();
-        
-        
-        PointCloud temp_cloud;
-        std::string ext = input_file_.substr(input_file_.find_last_of('.'));
-        if (ext == ".ply") {
-            PlyIO::readPlyFile(input_file_, temp_cloud);
-        } else {
-            PcdIO::readPcdFile(input_file_, temp_cloud);
+
+        if (!compression_result) {
+            return;
         }
-        
-        VoxelProcessor temp_processor(voxel_size_, 8);
-        VoxelGrid temp_grid;
-        temp_processor.voxelizePointCloud(temp_cloud, temp_grid);
-        VoxelCoord dims = temp_grid.getDimensions();
-        size_t total_voxels = static_cast<size_t>(dims.x) * dims.y * dims.z;
-        size_t one_byte_per_voxel_size = total_voxels * 1;
-        size_t original_point_cloud_size = temp_cloud.points.size() * sizeof(Point3D);
-        
-        
-        RCLCPP_INFO(this->get_logger(), "All tested block sizes (ratio vs 1 byte/voxel):");
-        for (const auto& [block_size, ratio] : result.tested_results) {
-            
-            size_t compressed_size = static_cast<size_t>(ratio * original_point_cloud_size);
-            float ratio_vs_one_byte = static_cast<float>(compressed_size) / static_cast<float>(one_byte_per_voxel_size);
-            
-            if (block_size == result.optimal_block_size) {
-                RCLCPP_INFO(this->get_logger(), 
-                           "  Block size %d: ratio = %.6f (%.1fx smaller than 1 byte/voxel) <- BEST", 
-                           block_size, ratio_vs_one_byte, 1.0f / ratio_vs_one_byte);
-            } else {
-                RCLCPP_INFO(this->get_logger(), 
-                           "  Block size %d: ratio = %.6f (%.1fx smaller than 1 byte/voxel)", 
-                           block_size, ratio_vs_one_byte, 1.0f / ratio_vs_one_byte);
-            }
-        }
-        
-        
-        publishResults(result);
-        
-        
-        performCompression(result.optimal_block_size);
+
+        displayCompressionSummary(*compression_result, result.optimal_block_size);
+        publishResults(result.optimal_block_size, *compression_result);
         
         
         if (run_once_) {
@@ -205,37 +160,22 @@ private:
         }
     }
     
-    void publishResults(const BlockSizeOptimizationResult& result) {
-        
-        std::stringstream ss;
-        ss << "{\n";
-        ss << "  \"optimal_block_size\": " << result.optimal_block_size << ",\n";
-        ss << "  \"best_compression_ratio\": " << std::fixed << std::setprecision(6) 
-           << result.best_compression_ratio << ",\n";
-        ss << "  \"optimization_time_ms\": " << std::fixed << std::setprecision(2) 
-           << result.optimization_time_ms << ",\n";
-        ss << "  \"tested_results\": {\n";
-        
-        bool first = true;
-        for (const auto& [block_size, ratio] : result.tested_results) {
-            if (!first) ss << ",\n";
-            ss << "    \"" << block_size << "\": " << std::fixed << std::setprecision(6) << ratio;
-            first = false;
-        }
-        ss << "\n  }\n";
-        ss << "}";
-        
+    void publishResults(int optimal_block_size, const CompressionResult& compression_result) {
+        const auto summary_json =
+            vq_occupancy_compressor::ros::buildOptimizationSummaryJson(optimal_block_size,
+                                                                       compression_result);
+
         auto msg = std_msgs::msg::String();
-        msg.data = ss.str();
+        msg.data = summary_json;
         result_pub_->publish(msg);
         
         
         auto block_size_msg = std_msgs::msg::Int32();
-        block_size_msg.data = result.optimal_block_size;
+        block_size_msg.data = optimal_block_size;
         optimal_block_size_pub_->publish(block_size_msg);
         
         auto ratio_msg = std_msgs::msg::Float32();
-        ratio_msg.data = result.best_compression_ratio;
+        ratio_msg.data = compression_result.compression_ratio;
         compression_ratio_pub_->publish(ratio_msg);
     }
     
@@ -253,7 +193,7 @@ private:
         compression_ratio_pub_->publish(ratio_msg);
     }
     
-    void performCompression(int optimal_block_size) {
+    const CompressionResult* performCompression(int optimal_block_size) {
         RCLCPP_INFO(this->get_logger(),
                    "=== Compressing with optimal block size %d ===",
                    optimal_block_size);
@@ -265,16 +205,21 @@ private:
         auto compress_result = compressor_->compress(input_file_);
         
         if (compress_result.success) {
+            last_compression_result_ = std::move(compress_result);
+            const auto& stored = *last_compression_result_;
             RCLCPP_INFO(this->get_logger(), "Compression successful!");
             RCLCPP_INFO(this->get_logger(),
-                        "Original size: %zu bytes", compress_result.original_size);
+                        "Original size: %zu bytes", stored.original_size);
             RCLCPP_INFO(this->get_logger(),
-                        "Compressed size: %zu bytes", compress_result.compressed_size);
+                        "Compressed size: %zu bytes", stored.compressed_size);
             RCLCPP_INFO(this->get_logger(),
-                        "Compression ratio: %.6f", compress_result.compression_ratio);
+                        "Compression ratio: %.6f", stored.compression_ratio);
+            return &stored;
         } else {
+            last_compression_result_.reset();
             RCLCPP_ERROR(this->get_logger(),
                         "Compression failed: %s", compress_result.error_message.c_str());
+            return nullptr;
         }
     }
     
@@ -297,107 +242,109 @@ private:
     std::unique_ptr<VqOccupancyCompressor> compressor_;
     config::CompressionSetup compression_setup_;
     
+    std::optional<CompressionResult> last_compression_result_;
     
-    BlockSizeOptimizationResult last_result_;
-    
-    void calculateAndDisplay1ByteComparison() {
-        
-        PointCloud cloud;
-        
-        
-        std::string ext = input_file_.substr(input_file_.find_last_of('.'));
-        if (ext == ".ply") {
-            PlyIO::readPlyFile(input_file_, cloud);
-        } else {
-            PcdIO::readPcdFile(input_file_, cloud);
+    void displayCompressionSummary(const CompressionResult& compression_result,
+                                   int optimal_block_size) {
+        const VoxelGrid& grid = compression_result.voxel_grid;
+        VoxelCoord dims = grid.getDimensions();
+        size_t total_voxels = static_cast<size_t>(dims.x) * dims.y * dims.z;
+        if (total_voxels == 0) {
+            RCLCPP_WARN(this->get_logger(),
+                        "Voxel grid is empty; skipping detailed comparison.");
+            return;
         }
-        
-        CompressionSettings temp_settings(voxel_size_, 8);
-        VoxelProcessor temp_processor(voxel_size_, 8);
-        VoxelGrid grid;
-        
-        if (temp_processor.voxelizePointCloud(cloud, grid)) {
-            VoxelCoord dims = grid.getDimensions();
-            size_t total_voxels = static_cast<size_t>(dims.x) * dims.y * dims.z;
-            size_t occupied_voxels = grid.getOccupiedVoxelCount();
-            
-            
-            size_t one_byte_per_voxel_size = total_voxels * 1;  
-            size_t original_point_cloud_size = cloud.points.size() * sizeof(Point3D);
-            
-            
-            float world_size_x = dims.x * voxel_size_;
-            float world_size_y = dims.y * voxel_size_;
-            float world_size_z = dims.z * voxel_size_;
-            
-            
-            size_t one_bit_per_voxel_size = (total_voxels + 7) / 8;
-            
-            RCLCPP_INFO(this->get_logger(), 
-                       "\n============ Final Summary ============");
-            RCLCPP_INFO(this->get_logger(), 
-                       "Real-world scale: %.1fm x %.1fm x %.1fm", 
-                       world_size_x, world_size_y, world_size_z);
-            RCLCPP_INFO(this->get_logger(), 
-                       "Total voxels: %zu", total_voxels);
-            RCLCPP_INFO(this->get_logger(), 
-                       "Occupied voxels: %zu (%.2f%%)", 
-                       occupied_voxels, 
-                       (100.0f * occupied_voxels / total_voxels));
-            RCLCPP_INFO(this->get_logger(), 
-                       "1 byte/voxel map size: %zu bytes", 
-                       one_byte_per_voxel_size);
-            RCLCPP_INFO(this->get_logger(), 
-                       "1 bit/voxel map size: %zu bytes", 
-                       one_bit_per_voxel_size);
-            
-            
-            if (!last_result_.tested_results.empty()) {
-                
-                size_t best_compressed_size = static_cast<size_t>(
-                    last_result_.best_compression_ratio * original_point_cloud_size);
-                
-                
-                int optimal_bs = last_result_.optimal_block_size;
-                size_t pattern_bytes = (optimal_bs * optimal_bs * optimal_bs + 7) / 8;
-                (void)pattern_bytes;
-                
-                
-                int x_blocks = (dims.x + optimal_bs - 1) / optimal_bs;
-                int y_blocks = (dims.y + optimal_bs - 1) / optimal_bs;
-                int z_blocks = (dims.z + optimal_bs - 1) / optimal_bs;
-                size_t total_blocks = x_blocks * y_blocks * z_blocks;
-                (void)total_blocks;
-                
-                
-                size_t estimated_codebook = best_compressed_size * 0.2;
-                size_t estimated_index = best_compressed_size * 0.8;
-                
-                float compression_vs_one_byte = static_cast<float>(best_compressed_size) / 
-                                               static_cast<float>(one_byte_per_voxel_size);
-                float compression_vs_one_bit = static_cast<float>(best_compressed_size) / 
-                                              static_cast<float>(one_bit_per_voxel_size);
-                
-                RCLCPP_INFO(this->get_logger(), 
-                           "Compressed map (block_size=%d):", optimal_bs);
-                RCLCPP_INFO(this->get_logger(), 
-                           "  - Codebook: ~%zu bytes", estimated_codebook);
-                RCLCPP_INFO(this->get_logger(), 
-                           "  - Index map: ~%zu bytes", estimated_index);
-                RCLCPP_INFO(this->get_logger(), 
-                           "  - Total: %zu bytes", best_compressed_size);
-                RCLCPP_INFO(this->get_logger(), 
-                           "Compression ratio (vs 1 byte/voxel): %.6f (%.1fx smaller)", 
-                           compression_vs_one_byte, 
-                           1.0f / compression_vs_one_byte);
-                RCLCPP_INFO(this->get_logger(), 
-                           "Compression ratio (vs 1 bit/voxel): %.6f (%.1fx smaller)", 
-                           compression_vs_one_bit, 
-                           1.0f / compression_vs_one_bit);
-                RCLCPP_INFO(this->get_logger(), 
-                           "========================================");
-            }
+        size_t occupied_voxels = grid.getOccupiedVoxelCount();
+        size_t one_byte_per_voxel_size = total_voxels;
+        size_t one_bit_per_voxel_size = (total_voxels + 7) / 8;
+
+        const double voxel_size = compression_result.voxel_size > 0.0f
+                                      ? static_cast<double>(compression_result.voxel_size)
+                                      : voxel_size_;
+        double world_size_x = dims.x * voxel_size;
+        double world_size_y = dims.y * voxel_size;
+        double world_size_z = dims.z * voxel_size;
+
+        double occupancy_percent =
+            static_cast<double>(total_voxels) > 0.0
+                ? (100.0 * static_cast<double>(occupied_voxels) /
+                   static_cast<double>(total_voxels))
+                : 0.0;
+
+        RCLCPP_INFO(this->get_logger(),
+                   "\n============ Final Summary ============");
+        RCLCPP_INFO(this->get_logger(),
+                    "Real-world scale: %.1fm x %.1fm x %.1fm",
+                    world_size_x, world_size_y, world_size_z);
+        RCLCPP_INFO(this->get_logger(),
+                    "Total voxels: %zu", total_voxels);
+        RCLCPP_INFO(this->get_logger(),
+                    "Occupied voxels: %zu (%.2f%%)",
+                    occupied_voxels,
+                    occupancy_percent);
+        RCLCPP_INFO(this->get_logger(),
+                    "1 byte/voxel map size: %zu bytes",
+                    one_byte_per_voxel_size);
+        RCLCPP_INFO(this->get_logger(),
+                    "1 bit/voxel map size: %zu bytes",
+                    one_bit_per_voxel_size);
+
+        size_t dictionary_bytes = 0;
+        for (const auto& pattern : compression_result.pattern_dictionary) {
+            dictionary_bytes += pattern.size();
         }
+        const size_t index_entry_bytes = (compression_result.index_bit_size + 7) / 8;
+        size_t index_bytes = compression_result.block_indices.size() * index_entry_bytes;
+        size_t compressed_size = compression_result.compressed_size;
+        if (compressed_size == 0) {
+            compressed_size = dictionary_bytes + index_bytes;
+        }
+
+        int effective_block_size = compression_result.block_size > 0
+                                       ? compression_result.block_size
+                                       : optimal_block_size;
+        int x_blocks =
+            effective_block_size > 0 ? (dims.x + effective_block_size - 1) / effective_block_size : 0;
+        int y_blocks =
+            effective_block_size > 0 ? (dims.y + effective_block_size - 1) / effective_block_size : 0;
+        int z_blocks =
+            effective_block_size > 0 ? (dims.z + effective_block_size - 1) / effective_block_size : 0;
+        size_t total_blocks = static_cast<size_t>(x_blocks) * y_blocks * z_blocks;
+
+        float compression_vs_one_byte = one_byte_per_voxel_size > 0
+            ? static_cast<float>(compressed_size) / static_cast<float>(one_byte_per_voxel_size)
+            : 0.0f;
+        float compression_vs_one_bit = one_bit_per_voxel_size > 0
+            ? static_cast<float>(compressed_size) / static_cast<float>(one_bit_per_voxel_size)
+            : 0.0f;
+
+        RCLCPP_INFO(this->get_logger(),
+                    "Compressed map (block_size=%d):", effective_block_size);
+        RCLCPP_INFO(this->get_logger(),
+                    "  - Codebook: %zu bytes", dictionary_bytes);
+        RCLCPP_INFO(this->get_logger(),
+                    "  - Index map: %zu bytes", index_bytes);
+        RCLCPP_INFO(this->get_logger(),
+                    "  - Total: %zu bytes", compressed_size);
+        if (total_blocks > 0) {
+            RCLCPP_INFO(this->get_logger(),
+                        "  - Blocks: %d x %d x %d = %zu",
+                        x_blocks, y_blocks, z_blocks, total_blocks);
+        }
+        if (one_byte_per_voxel_size > 0) {
+            RCLCPP_INFO(this->get_logger(),
+                        "Compression ratio (vs 1 byte/voxel): %.6f (%.1fx smaller)",
+                        compression_vs_one_byte,
+                        compression_vs_one_byte > 0.0f ? (1.0f / compression_vs_one_byte) : 0.0f);
+        }
+        if (one_bit_per_voxel_size > 0) {
+            RCLCPP_INFO(this->get_logger(),
+                        "Compression ratio (vs 1 bit/voxel): %.6f (%.1fx smaller)",
+                        compression_vs_one_bit,
+                        compression_vs_one_bit > 0.0f ? (1.0f / compression_vs_one_bit) : 0.0f);
+        }
+        RCLCPP_INFO(this->get_logger(),
+                    "========================================");
     }
 };
 

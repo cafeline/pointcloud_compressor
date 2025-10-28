@@ -164,6 +164,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_cli_optimize test/test_cli_optimize.cpp)
   target_link_libraries(test_cli_optimize ${PROJECT_NAME}_cli_support)
+
+  ament_add_gtest(test_block_size_optimizer_summary test/test_block_size_optimizer_summary.cpp)
+  target_link_libraries(test_block_size_optimizer_summary ${PROJECT_NAME}_bridge)
 endif()
 
 
