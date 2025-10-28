@@ -5,14 +5,14 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-# Find dependencies
+
 find_package(ament_cmake REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(OpenMP)
 find_package(HDF5 REQUIRED COMPONENTS C CXX HL)
 find_package(yaml-cpp REQUIRED)
 
-# ROS2 dependencies
+
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -22,14 +22,14 @@ find_package(builtin_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_srvs REQUIRED)
 
-# Include directories
+
 include_directories(
   include
   ${EIGEN3_INCLUDE_DIRS}
   ${HDF5_INCLUDE_DIRS}
 )
 
-# Generate messages
+
 set(msg_files
   "msg/PatternDictionary.msg"
 )
@@ -39,7 +39,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   DEPENDENCIES builtin_interfaces std_msgs geometry_msgs
 )
 
-# Core library source files
+
 set(CORE_SOURCES
   src/io/PcdIO.cpp
   src/io/PlyIO.cpp
@@ -55,14 +55,14 @@ set(CORE_SOURCES
   src/config/ConfigTransforms.cpp
 )
 
-# Create core library
+
 add_library(${PROJECT_NAME}_core ${CORE_SOURCES})
 target_include_directories(${PROJECT_NAME}_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_compile_features(${PROJECT_NAME}_core PUBLIC cxx_std_17)
 
-# Compression integration library
+
 add_library(${PROJECT_NAME}_bridge
   src/bridge/Bridge.cpp
   src/common/CompressionDataUtils.cpp
@@ -86,20 +86,20 @@ target_include_directories(${PROJECT_NAME}_cli_support PUBLIC
   $<INSTALL_INTERFACE:include>)
 target_compile_features(${PROJECT_NAME}_cli_support PUBLIC cxx_std_17)
 
-# Add OpenMP support if available
+
 if(OpenMP_CXX_FOUND)
   target_link_libraries(${PROJECT_NAME}_core PUBLIC OpenMP::OpenMP_CXX)
   target_compile_definitions(${PROJECT_NAME}_core PUBLIC USE_OPENMP)
 endif()
 
-# Link HDF5 libraries
+
 target_link_libraries(${PROJECT_NAME}_core PUBLIC ${HDF5_CXX_LIBRARIES} ${HDF5_HL_LIBRARIES} yaml-cpp)
 
-# Main executable
+
 add_executable(${PROJECT_NAME}_cli src/apps/cli_main.cpp)
 target_link_libraries(${PROJECT_NAME}_cli ${PROJECT_NAME}_cli_support)
 
-# ROS2 Node executable
+
 add_executable(${PROJECT_NAME}_node src/ros/vq_occupancy_compressor_node.cpp)
 target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME}_bridge)
 ament_target_dependencies(${PROJECT_NAME}_node
@@ -111,13 +111,13 @@ ament_target_dependencies(${PROJECT_NAME}_node
   builtin_interfaces
 )
 
-# C++ viewer removed - using Python viewer only
 
-# Ensure message headers are generated before building the nodes
+
+
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 target_link_libraries(${PROJECT_NAME}_node "${cpp_typesupport_target}")
 
-# Build block size optimizer node
+
 add_executable(block_size_optimizer_node src/ros/block_size_optimizer_node.cpp)
 target_link_libraries(block_size_optimizer_node ${PROJECT_NAME}_bridge)
 ament_target_dependencies(block_size_optimizer_node
@@ -126,7 +126,7 @@ ament_target_dependencies(block_size_optimizer_node
   std_srvs
 )
 
-# Installation
+
 install(TARGETS ${PROJECT_NAME}_core
   DESTINATION lib)
 install(TARGETS ${PROJECT_NAME}_bridge
@@ -139,17 +139,17 @@ install(TARGETS ${PROJECT_NAME}_cli_support
 install(DIRECTORY include/
   DESTINATION include/)
 
-# Install launch files
+
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}/
 )
 
-# Install config files
+
 install(DIRECTORY config
   DESTINATION share/${PROJECT_NAME}/
 )
 
-# Testing
+
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
 
@@ -166,7 +166,7 @@ if(BUILD_TESTING)
   target_link_libraries(test_cli_optimize ${PROJECT_NAME}_cli_support)
 endif()
 
-# Export dependencies
+
 ament_export_dependencies(rosidl_default_runtime)
 
 ament_package()

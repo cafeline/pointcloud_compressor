@@ -27,7 +27,7 @@ std::string joinErrors(const std::vector<std::string>& errors) {
   return oss.str();
 }
 
-}  // namespace
+}  
 
 OptimizeWorkflowResult runOptimizeWorkflow(const std::string& config_path) {
   config::BlockSizeOptimizationConfig opt_config =
@@ -116,4 +116,4 @@ OptimizeWorkflowResult runOptimizeWorkflow(const std::string& config_path) {
   return result;
 }
 
-}  // namespace vq_occupancy_compressor::cli
+}  

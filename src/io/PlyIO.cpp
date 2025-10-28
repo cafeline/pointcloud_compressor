@@ -19,7 +19,7 @@ bool PlyIO::readPlyFile(const std::string& filename, PointCloud& cloud) {
     auto t0 = std::chrono::high_resolution_clock::now();
     cloud.clear();
     
-    // Open file in binary mode for binary PLY files
+    
     PlyHeader temp_header;
     std::ifstream header_file(filename);
     if (!parseHeaderInternal(header_file, temp_header)) {
@@ -28,7 +28,7 @@ bool PlyIO::readPlyFile(const std::string& filename, PointCloud& cloud) {
     }
     header_file.close();
     
-    // Reopen file with appropriate mode
+    
     std::ifstream file;
     if (isBinaryFormat(temp_header.format)) {
         file.open(filename, std::ios::binary);
@@ -49,7 +49,7 @@ bool PlyIO::readPlyFile(const std::string& filename, PointCloud& cloud) {
     }
     auto th1 = std::chrono::high_resolution_clock::now();
     
-    // Check for unsupported formats
+    
     if (header.format == "binary_big_endian") {
         std::cerr << "Binary big endian PLY format is not supported: " << filename << std::endl;
         return false;
@@ -60,7 +60,7 @@ bool PlyIO::readPlyFile(const std::string& filename, PointCloud& cloud) {
         return false;
     }
     
-    // Validate that we have x, y, z properties
+    
     if (!isValidPropertySet(header.properties)) {
         std::cerr << "PLY file must have x, y, z properties: " << filename << std::endl;
         return false;
@@ -70,16 +70,16 @@ bool PlyIO::readPlyFile(const std::string& filename, PointCloud& cloud) {
     if (header.format == "ascii") {
         ok = readAsciiData(file, cloud, header);
     } else {
-        // Try memory-mapped I/O for large binary files
+        
         size_t header_size = file.tellg();
         file.close();
         
-        // Get file size
+        
         struct stat st;
-        if (stat(filename.c_str(), &st) == 0 && st.st_size > 10 * 1024 * 1024) { // Use mmap for files > 10MB
+        if (stat(filename.c_str(), &st) == 0 && st.st_size > 10 * 1024 * 1024) { 
             ok = readBinaryDataMmap(filename, cloud, header, header_size);
         } else {
-            // Reopen for small files
+            
             file.open(filename, std::ios::binary);
             file.seekg(header_size);
             ok = readBinaryData(file, cloud, header);
@@ -123,7 +123,7 @@ bool PlyIO::validateFormat(const std::string& filename) {
         return false;
     }
     
-    // First check header format
+    
     PlyHeader temp_header;
     std::ifstream header_file(filename);
     if (!parseHeaderInternal(header_file, temp_header)) {
@@ -131,7 +131,7 @@ bool PlyIO::validateFormat(const std::string& filename) {
     }
     header_file.close();
     
-    // Reopen with appropriate mode
+    
     std::ifstream file;
     if (isBinaryFormat(temp_header.format)) {
         file.open(filename, std::ios::binary);
@@ -143,25 +143,25 @@ bool PlyIO::validateFormat(const std::string& filename) {
         return false;
     }
     
-    // Parse headerの成否で判定し、重い全読込は避ける
+    
     PlyHeader header;
     if (!parseHeaderInternal(file, header)) {
         return false;
     }
 
-    // big-endianは未サポート
+    
     if (header.format == "binary_big_endian") {
         return false;
     }
 
-    // ヘッダが有効ならOK（頂点数が0でも有効）
+    
     return true;
 }
 
 bool PlyIO::parseHeaderInternal(std::ifstream& file, PlyHeader& header) {
     std::string line;
     
-    // Read and validate first line
+    
     if (!std::getline(file, line)) {
         return false;
     }
@@ -175,7 +175,7 @@ bool PlyIO::parseHeaderInternal(std::ifstream& file, PlyHeader& header) {
     bool found_end_header = false;
     
     while (std::getline(file, line)) {
-        // Remove trailing whitespace
+        
         line.erase(line.find_last_not_of(" \n\r\t") + 1);
         
         if (line.empty()) continue;
@@ -195,7 +195,7 @@ bool PlyIO::parseHeaderInternal(std::ifstream& file, PlyHeader& header) {
             std::string comment;
             std::getline(iss, comment);
             if (!comment.empty() && comment[0] == ' ') {
-                comment = comment.substr(1); // Remove leading space
+                comment = comment.substr(1); 
             }
             header.comments.push_back(comment);
         }
@@ -211,7 +211,7 @@ bool PlyIO::parseHeaderInternal(std::ifstream& file, PlyHeader& header) {
         else if (keyword == "property") {
             std::string type, name;
             iss >> type >> name;
-            // store full line for backward compatibility and simple checks
+            
             std::string property_line = "property ";
             property_line += type + " " + name;
             header.properties.push_back(property_line);
@@ -229,7 +229,7 @@ bool PlyIO::parseHeaderInternal(std::ifstream& file, PlyHeader& header) {
 bool PlyIO::readAsciiData(std::ifstream& file, PointCloud& cloud, const PlyHeader& header) {
     cloud.points.reserve(header.vertex_count);
 
-    // プロパティ名からx,y,zの列位置を特定
+    
     int x_idx = -1, y_idx = -1, z_idx = -1;
     for (size_t i = 0; i < header.property_names.size(); ++i) {
         const auto& n = header.property_names[i];
@@ -314,33 +314,33 @@ bool PlyIO::isBinaryFormat(const std::string& format) {
 bool PlyIO::readBinaryData(std::ifstream& file, PointCloud& cloud, const PlyHeader& header) {
     const std::size_t vertex_count = header.vertex_count < 0 ? 0 : static_cast<std::size_t>(header.vertex_count);
     cloud.points.reserve(vertex_count);
-    // シンプル実装: x,y,zがfloatで連続している前提（既存テストに整合）
-    // 本格実装ではproperty_types/offsetからstride算出が必要
+    
+    
     const std::size_t bytes_per_vertex = 3 * sizeof(float);
     const std::size_t total_bytes = vertex_count * bytes_per_vertex;
     
-    // Allocate buffer for batch reading
-    const std::size_t buffer_size = std::min<std::size_t>(total_bytes, 100 * 1024 * 1024); // 100MB buffer
+    
+    const std::size_t buffer_size = std::min<std::size_t>(total_bytes, 100 * 1024 * 1024); 
     std::vector<char> buffer(buffer_size == 0 ? bytes_per_vertex : buffer_size);
     
     std::size_t vertices_read = 0;
     
     while (vertices_read < vertex_count) {
-        // Calculate how many vertices to read in this batch
+        
         const std::size_t vertices_in_batch = std::min(
             buffer.size() / bytes_per_vertex,
             vertex_count - vertices_read
         );
         const std::size_t bytes_to_read = vertices_in_batch * bytes_per_vertex;
         
-        // Read batch into buffer
+        
         file.read(buffer.data(), bytes_to_read);
         if (!file.good() && !file.eof()) {
             std::cerr << "Failed to read binary vertex data at vertex " << vertices_read << std::endl;
             return false;
         }
         
-        // Process buffer
+        
         const float* float_buffer = reinterpret_cast<const float*>(buffer.data());
         for (std::size_t i = 0; i < vertices_in_batch; ++i) {
             cloud.points.emplace_back(
@@ -358,14 +358,14 @@ bool PlyIO::readBinaryData(std::ifstream& file, PointCloud& cloud, const PlyHead
 
 bool PlyIO::readBinaryDataMmap(const std::string& filename, PointCloud& cloud, 
                                const PlyHeader& header, size_t header_size) {
-    // Open file for memory mapping
+    
     int fd = open(filename.c_str(), O_RDONLY);
     if (fd == -1) {
         std::cerr << "Failed to open file for mmap: " << filename << std::endl;
         return false;
     }
     
-    // Get file size
+    
     struct stat st;
     if (fstat(fd, &st) != 0) {
         close(fd);
@@ -373,7 +373,7 @@ bool PlyIO::readBinaryDataMmap(const std::string& filename, PointCloud& cloud,
         return false;
     }
     
-    // Memory map the file
+    
     void* mapped = mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     if (mapped == MAP_FAILED) {
         close(fd);
@@ -381,10 +381,10 @@ bool PlyIO::readBinaryDataMmap(const std::string& filename, PointCloud& cloud,
         return false;
     }
     
-    // Advise kernel about access pattern
+    
     madvise(mapped, st.st_size, MADV_SEQUENTIAL);
     
-    // サイズ検証: 必要データ長が存在するか（3 floats/vertex 仮定）
+    
     size_t required = header_size + static_cast<size_t>(header.vertex_count) * 3 * sizeof(float);
     if (static_cast<size_t>(st.st_size) < required) {
         munmap(mapped, st.st_size);
@@ -393,14 +393,14 @@ bool PlyIO::readBinaryDataMmap(const std::string& filename, PointCloud& cloud,
         return false;
     }
 
-    // Reserve space for points
+    
     cloud.points.reserve(header.vertex_count);
     
-    // Skip header and read vertex data
+    
     const char* data = static_cast<const char*>(mapped) + header_size;
     const float* vertices = reinterpret_cast<const float*>(data);
     
-    // Read all vertices at once
+    
     for (int i = 0; i < header.vertex_count; ++i) {
         cloud.points.emplace_back(
             vertices[i * 3],
@@ -409,11 +409,11 @@ bool PlyIO::readBinaryDataMmap(const std::string& filename, PointCloud& cloud,
         );
     }
     
-    // Clean up
+    
     munmap(mapped, st.st_size);
     close(fd);
     
     return true;
 }
 
-} // namespace vq_occupancy_compressor
+} 

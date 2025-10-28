@@ -18,7 +18,7 @@ std::string formatCompressionSummary(const PCCCompressionReport& report);
 std::string formatBlockSizeSummary(const BlockSizeOptimizationResult& result,
                                    bool verbose);
 
-}  // namespace vq_occupancy_compressor
+}  
 
 namespace vq_occupancy_compressor::io {
 
@@ -47,6 +47,6 @@ public:
     std::vector<uint8_t> extractOccupancy(const PCCCompressionReport& report) const;
 };
 
-}  // namespace vq_occupancy_compressor::io
+}  
 
-#endif  // VQ_OCCUPANCY_COMPRESSOR_REPORT_REPORT_UTILITIES_HPP
+#endif  

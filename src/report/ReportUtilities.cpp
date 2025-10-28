@@ -25,7 +25,7 @@ PCCCompressionReport makeReportSkeleton() {
     return report;
 }
 
-}  // namespace
+}  
 
 namespace vq_occupancy_compressor {
 
@@ -64,7 +64,7 @@ std::string formatBlockSizeSummary(const BlockSizeOptimizationResult& result,
     return oss.str();
 }
 
-}  // namespace vq_occupancy_compressor
+}  
 
 namespace vq_occupancy_compressor::io {
 
@@ -127,7 +127,7 @@ std::vector<uint32_t> decodeIndices(const PCCCompressionReport& report) {
     return indices;
 }
 
-}  // namespace
+}  
 
 PCCCompressionReport CompressionReportBuilder::build(const CompressionResult& result,
                                                      const PCCCompressionRequest& request,
@@ -303,4 +303,4 @@ std::vector<uint8_t> CompressionReportBuilder::extractOccupancy(
                                 report.occupancy.occupancy + report.occupancy.size);
 }
 
-}  // namespace vq_occupancy_compressor::io
+}  

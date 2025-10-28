@@ -52,7 +52,7 @@ HDF5IO::RawVoxelGridData buildRawGridData(const CompressionResult& result,
     return raw;
 }
 
-}  // namespace
+}  
 
 bool writeCompressedMap(const std::string& output_path,
                         const vq_occupancy_compressor::CompressedMapData& data,
@@ -144,4 +144,4 @@ bool writeRawVoxelGrid(const std::string& output_path,
     return true;
 }
 
-}  // namespace vq_occupancy_compressor::io
+}  

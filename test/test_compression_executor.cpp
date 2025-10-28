@@ -28,7 +28,7 @@ fs::path writeTestPointCloud(const fs::path& dir) {
   return file;
 }
 
-}  // namespace
+}  
 
 TEST(CompressionExecutor, CompressesRequestAndProvidesReport) {
   const fs::path temp_dir = fs::temp_directory_path() / "vq_occupancy_compressor_service_test";

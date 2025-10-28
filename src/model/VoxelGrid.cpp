@@ -8,10 +8,10 @@
 
 namespace vq_occupancy_compressor {
 
-// VoxelBlock implementation
+
 VoxelBlock::VoxelBlock(int size) : size(size), position(0, 0, 0) {
     int total_voxels = size * size * size;
-    voxels_.resize(total_voxels, 0);  // Using 0 for false
+    voxels_.resize(total_voxels, 0);  
 }
 
 VoxelBlock::~VoxelBlock() {}
@@ -70,7 +70,7 @@ int VoxelBlock::indexFromCoord(int x, int y, int z) const {
     return z * size * size + y * size + x;
 }
 
-// VoxelGrid implementation
+
 VoxelGrid::VoxelGrid() : dim_x_(0), dim_y_(0), dim_z_(0), voxel_size_(0.01f),
                          origin_x_(0), origin_y_(0), origin_z_(0), use_sparse_(false) {}
 
@@ -89,12 +89,12 @@ void VoxelGrid::initialize(int dim_x, int dim_y, int dim_z, float voxel_size) {
     
     uint64_t total_voxels = static_cast<uint64_t>(dim_x) * dim_y * dim_z;
     
-    // Use sparse representation for large grids
+    
     if (total_voxels > SPARSE_THRESHOLD) {
         use_sparse_ = true;
         voxels_.clear();
         sparse_voxels_.clear();
-        sparse_voxels_.reserve(total_voxels / 100); // Assume ~1% occupancy
+        sparse_voxels_.reserve(total_voxels / 100); 
     } else {
         use_sparse_ = false;
         sparse_voxels_.clear();
@@ -230,4 +230,4 @@ uint64_t VoxelGrid::indexFromCoord(int x, int y, int z) const {
            static_cast<uint64_t>(x);
 }
 
-} // namespace vq_occupancy_compressor
+} 

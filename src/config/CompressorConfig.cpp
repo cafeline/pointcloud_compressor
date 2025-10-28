@@ -64,7 +64,7 @@ CompressorConfig parseCompressorConfig(const YAML::Node& params) {
     return config;
 }
 
-}  // namespace
+}  
 
 CompressorConfig loadCompressorConfigFromYaml(const std::string& path) {
     YAML::Node root = YAML::LoadFile(path);
@@ -133,4 +133,4 @@ CompressionSettings settingsFromConfig(const CompressorConfig& config) {
     return settings;
 }
 
-}  // namespace vq_occupancy_compressor::config
+}  

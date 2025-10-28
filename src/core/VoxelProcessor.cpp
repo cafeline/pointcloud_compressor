@@ -33,7 +33,7 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
 
     auto total_start = std::chrono::high_resolution_clock::now();
     
-    // Compute bounding box
+    
     auto bbox_start = std::chrono::high_resolution_clock::now();
     Point3D min_pt, max_pt;
     computeBoundingBox(cloud, min_pt, max_pt);
@@ -55,19 +55,19 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     auto bbox_time = std::chrono::duration_cast<std::chrono::microseconds>(bbox_end - bbox_start).count() / 1000.0;
     last_report_.bbox_time_ms = bbox_time;
     
-    // Calculate grid dimensions
+    
     int grid_x = static_cast<int>(std::ceil((max_pt.x - min_pt.x) / voxel_size_)) + 1;
     int grid_y = static_cast<int>(std::ceil((max_pt.y - min_pt.y) / voxel_size_)) + 1;
     int grid_z = static_cast<int>(std::ceil((max_pt.z - min_pt.z) / voxel_size_)) + 1;
     
-    // Calculate total voxels once
+    
     uint64_t total_voxels = static_cast<uint64_t>(grid_x) * grid_y * grid_z;
     last_report_.grid_x = grid_x;
     last_report_.grid_y = grid_y;
     last_report_.grid_z = grid_z;
     last_report_.total_voxels = total_voxels;
     
-    // Initialize grid
+    
     auto grid_init_start = std::chrono::high_resolution_clock::now();
     grid.initialize(grid_x, grid_y, grid_z, voxel_size_);
     grid.setOrigin(min_pt.x, min_pt.y, min_pt.z);
@@ -77,22 +77,22 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     
     int occupied_count = 0;
     
-    // Phase 1: Count points per voxel using sparse map
+    
     auto voxel_count_start = std::chrono::high_resolution_clock::now();
     std::unordered_map<uint64_t, uint32_t> voxel_count_map;
-    voxel_count_map.reserve(cloud.points.size() / 10); // Estimate ~10 points per voxel
+    voxel_count_map.reserve(cloud.points.size() / 10); 
         
-    // Pre-compute inverse for faster division
+    
     const float inv_voxel_size = 1.0f / voxel_size_;
     
-    // Count points per voxel
+    
     for (const auto& point : cloud.points) {
-        // Fast voxel index calculation with multiplication instead of division
+        
         int x = static_cast<int>((point.x - min_pt.x) * inv_voxel_size);
         int y = static_cast<int>((point.y - min_pt.y) * inv_voxel_size);
         int z = static_cast<int>((point.z - min_pt.z) * inv_voxel_size);
         
-        // Check bounds
+        
         if (x >= 0 && x < grid_x && y >= 0 && y < grid_y && z >= 0 && z < grid_z) {
             uint64_t idx = static_cast<uint64_t>(z) * grid_x * grid_y + 
                           static_cast<uint64_t>(y) * grid_x + 
@@ -106,13 +106,13 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     last_report_.voxel_count_time_ms = voxel_count_time;
     last_report_.occupied_voxels_estimate = static_cast<int>(voxel_count_map.size());
     
-    // Phase 2: Transfer to VoxelGrid (optimized for sparse grids)
+    
     auto transfer_start = std::chrono::high_resolution_clock::now();
     
-    // For sparse voxel maps, directly set from the count map (already know which are occupied)
+    
     for (const auto& [idx, count] : voxel_count_map) {
         if (count >= static_cast<uint32_t>(min_points_threshold_)) {
-            // Convert linear index back to 3D coordinates
+            
             uint64_t temp = idx;
             int x = temp % grid_x;
             temp /= grid_x;
@@ -143,7 +143,7 @@ bool VoxelProcessor::divideIntoBlocks(const VoxelGrid& grid, std::vector<VoxelBl
     
     VoxelCoord dims = grid.getDimensions();
     
-    // Calculate number of blocks in each dimension
+    
     int x_blocks = (dims.x + block_size_ - 1) / block_size_;
     int y_blocks = (dims.y + block_size_ - 1) / block_size_;
     int z_blocks = (dims.z + block_size_ - 1) / block_size_;
@@ -156,7 +156,7 @@ bool VoxelProcessor::divideIntoBlocks(const VoxelGrid& grid, std::vector<VoxelBl
     last_report_.total_blocks = total_blocks;
     
 #ifdef USE_OPENMP
-    // Pre-allocate all blocks
+    
     blocks.resize(total_blocks);
     
     #pragma omp parallel for collapse(3)
@@ -169,7 +169,7 @@ bool VoxelProcessor::divideIntoBlocks(const VoxelGrid& grid, std::vector<VoxelBl
         }
     }
 #else
-    // Extract blocks sequentially
+    
     for (int bz = 0; bz < z_blocks; ++bz) {
         for (int by = 0; by < y_blocks; ++by) {
             for (int bx = 0; bx < x_blocks; ++bx) {
@@ -211,7 +211,7 @@ bool VoxelProcessor::reconstructPointCloud(const VoxelGrid& grid, PointCloud& cl
     
     Point3D min_pt(origin_x, origin_y, origin_z);
     
-    // Extract occupied voxels as points
+    
     for (int z = 0; z < dims.z; ++z) {
         for (int y = 0; y < dims.y; ++y) {
             for (int x = 0; x < dims.x; ++x) {
@@ -235,13 +235,13 @@ float VoxelProcessor::findOptimalVoxelSize(const PointCloud& cloud,
     float best_size = min_size;
     float best_score = 0.0f;
     
-    // Try different voxel sizes
+    
     for (float size = min_size; size <= max_size; size += step) {
         VoxelProcessor temp_processor(size, block_size_, min_points_threshold_, bounding_box_margin_ratio_);
         VoxelGrid temp_grid;
 
         if (temp_processor.voxelizePointCloud(cloud, temp_grid)) {
-            // Score based on occupancy ratio and compression potential
+            
             float occupancy = temp_grid.getOccupancyRatio();
             float compression_potential = 1.0f / (1.0f + occupancy);
             float score = occupancy * compression_potential;
@@ -268,21 +268,21 @@ bool VoxelProcessor::saveBlocksToFile(const std::vector<VoxelBlock>& blocks,
         return false;
     }
     
-    // Write header
+    
     uint32_t num_blocks = static_cast<uint32_t>(blocks.size());
     uint32_t block_size = static_cast<uint32_t>(block_size_);
     
     file.write(reinterpret_cast<const char*>(&num_blocks), sizeof(num_blocks));
     file.write(reinterpret_cast<const char*>(&block_size), sizeof(block_size));
     
-    // Write blocks
+    
     for (const auto& block : blocks) {
-        // Write position
+        
         file.write(reinterpret_cast<const char*>(&block.position.x), sizeof(int));
         file.write(reinterpret_cast<const char*>(&block.position.y), sizeof(int));
         file.write(reinterpret_cast<const char*>(&block.position.z), sizeof(int));
         
-        // Write pattern
+        
         std::vector<uint8_t> pattern = block.toBytePattern();
         uint32_t pattern_size = static_cast<uint32_t>(pattern.size());
         file.write(reinterpret_cast<const char*>(&pattern_size), sizeof(pattern_size));
@@ -301,7 +301,7 @@ bool VoxelProcessor::loadBlocksFromFile(const std::string& filename,
     
     blocks.clear();
     
-    // Read header
+    
     uint32_t num_blocks, block_size;
     file.read(reinterpret_cast<char*>(&num_blocks), sizeof(num_blocks));
     file.read(reinterpret_cast<char*>(&block_size), sizeof(block_size));
@@ -312,16 +312,16 @@ bool VoxelProcessor::loadBlocksFromFile(const std::string& filename,
     
     blocks.reserve(num_blocks);
     
-    // Read blocks
+    
     for (uint32_t i = 0; i < num_blocks; ++i) {
         VoxelBlock block(block_size);
         
-        // Read position
+        
         file.read(reinterpret_cast<char*>(&block.position.x), sizeof(int));
         file.read(reinterpret_cast<char*>(&block.position.y), sizeof(int));
         file.read(reinterpret_cast<char*>(&block.position.z), sizeof(int));
         
-        // Read pattern
+        
         uint32_t pattern_size;
         file.read(reinterpret_cast<char*>(&pattern_size), sizeof(pattern_size));
         
@@ -339,7 +339,7 @@ bool VoxelProcessor::loadBlocksFromFile(const std::string& filename,
     return true;
 }
 
-// Private helper functions
+
 void VoxelProcessor::computeBoundingBox(const PointCloud& cloud, 
                                       Point3D& min_pt, Point3D& max_pt) {
     if (cloud.empty()) {
@@ -367,7 +367,7 @@ int VoxelProcessor::pointToVoxelIndex(const Point3D& point, const Point3D& min_p
     y = static_cast<int>((point.y - min_pt.y) / voxel_size_);
     z = static_cast<int>((point.z - min_pt.z) / voxel_size_);
     
-    // Clamp to grid bounds
+    
     x = std::max(0, std::min(x, grid_x - 1));
     y = std::max(0, std::min(y, grid_y - 1));
     z = std::max(0, std::min(z, grid_z - 1));
@@ -376,7 +376,7 @@ int VoxelProcessor::pointToVoxelIndex(const Point3D& point, const Point3D& min_p
 }
 
 Point3D VoxelProcessor::voxelToPoint(int x, int y, int z, const Point3D& min_pt) {
-    // Return center of voxel
+    
     return Point3D(
         min_pt.x + (x + 0.5f) * voxel_size_,
         min_pt.y + (y + 0.5f) * voxel_size_,
@@ -384,4 +384,4 @@ Point3D VoxelProcessor::voxelToPoint(int x, int y, int z, const Point3D& min_pt)
     );
 }
 
-} // namespace vq_occupancy_compressor
+} 

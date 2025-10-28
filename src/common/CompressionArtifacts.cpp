@@ -75,7 +75,7 @@ std::vector<uint8_t> packBlockIndices(const std::vector<uint64_t>& indices, uint
             break;
         }
         default:
-            // Unsupported bit size; return empty vector
+            
             break;
     }
 
@@ -107,4 +107,4 @@ std::vector<uint8_t> buildOccupancyMask(const vq_occupancy_compressor::VoxelGrid
     return occupancy;
 }
 
-}  // namespace vq_occupancy_compressor::common
+}  

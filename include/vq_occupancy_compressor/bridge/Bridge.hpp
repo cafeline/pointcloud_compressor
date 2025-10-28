@@ -76,6 +76,6 @@ PCCCompressionReport vqo_handle_compress(VqoCompressionHandle* handle,
 
 void vqo_handle_release_report(VqoCompressionHandle* handle, PCCCompressionReport* report);
 
-}  // extern "C"
+}  
 
-#endif  // VQ_OCCUPANCY_COMPRESSOR_BRIDGE_BRIDGE_HPP
+#endif  

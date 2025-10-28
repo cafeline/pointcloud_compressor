@@ -36,6 +36,6 @@ private:
     std::string messages_;
 };
 
-}  // namespace vq_occupancy_compressor::utils
+}  
 
-#endif  // VQ_OCCUPANCY_COMPRESSOR_UTILS_ERROR_ACCUMULATOR_HPP
+#endif  

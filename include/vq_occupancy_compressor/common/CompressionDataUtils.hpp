@@ -12,6 +12,6 @@ namespace vq_occupancy_compressor::common {
 uint8_t bitWidthFromMaxIndex(uint64_t max_index);
 std::vector<uint32_t> convertBlockIndicesToU32(const std::vector<uint64_t>& indices);
 
-}  // namespace vq_occupancy_compressor::common
+}
 
-#endif  // VQ_OCCUPANCY_COMPRESSOR_COMMON_COMPRESSION_DATA_UTILS_HPP
+#endif

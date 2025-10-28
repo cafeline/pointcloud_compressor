@@ -46,6 +46,6 @@ bool runCompression(const vq_occupancy_compressor::config::CompressionSetup& set
                     const CompressionSuccessCallback& on_success,
                     std::string* error_message = nullptr);
 
-}  // namespace vq_occupancy_compressor::services
+}  
 
-#endif  // VQ_OCCUPANCY_COMPRESSOR_SERVICES_COMPRESSION_EXECUTOR_HPP
+#endif  

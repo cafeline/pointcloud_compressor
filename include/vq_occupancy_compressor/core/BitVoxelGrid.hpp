@@ -51,7 +51,7 @@ public:
 
     inline uint64_t voxelIndex3Dto1D(int x, int y, int z) const {
         if (x < 0 || x >= grid_x || y < 0 || y >= grid_y || z < 0 || z >= grid_z) {
-            return total_voxels; // Invalid index
+            return total_voxels; 
         }
         return static_cast<uint64_t>(z) * grid_x * grid_y +
                static_cast<uint64_t>(y) * grid_x +
@@ -91,6 +91,6 @@ public:
     }
 };
 
-} // namespace vq_occupancy_compressor
+} 
 
-#endif // VQ_OCCUPANCY_COMPRESSOR_BIT_VOXEL_GRID_HPP
+#endif 

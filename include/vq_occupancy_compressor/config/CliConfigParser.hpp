@@ -11,6 +11,6 @@ namespace vq_occupancy_compressor::config {
 
 std::string parseConfigPath(const std::vector<std::string>& args);
 
-}  // namespace vq_occupancy_compressor::config
+}  
 
-#endif  // VQ_OCCUPANCY_COMPRESSOR_CONFIG_CLI_CONFIG_PARSER_HPP
+#endif  

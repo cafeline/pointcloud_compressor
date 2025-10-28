@@ -77,7 +77,7 @@ private:
     float bounding_box_margin_ratio_;
     VoxelizationReport last_report_{};
 
-    // Helper functions
+    
     void computeBoundingBox(const PointCloud& cloud,
                           Point3D& min_pt, Point3D& max_pt);
 
@@ -87,7 +87,7 @@ private:
 
     Point3D voxelToPoint(int x, int y, int z, const Point3D& min_pt);
 
-    // Inline function for performance-critical operations
+    
     inline void pointToVoxelIndexFast(const Point3D& point, const Point3D& min_pt,
                                       int& x, int& y, int& z) const {
         x = static_cast<int>((point.x - min_pt.x) / voxel_size_);
@@ -96,6 +96,6 @@ private:
     }
 };
 
-} // namespace vq_occupancy_compressor
+} 
 
-#endif // VQ_OCCUPANCY_COMPRESSOR_VOXEL_PROCESSOR_HPP
+#endif 

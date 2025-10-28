@@ -1,10 +1,10 @@
 block_size_optimizer:
   ros__parameters:
-    # input_file: "/home/ryo/tsudanuma/maps/tsudanuma-challenge-all.ply"
+    
     input_file: "/home/ryo/tukuba/tsukuba_all_241006_add-imu-conf.pcd"
     voxel_size: 0.1
 
-    # Block size optimization range
+    
     min_block_size: 10
     max_block_size: 11
     step_size: 1

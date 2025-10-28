@@ -32,6 +32,6 @@ private:
     uint64_t max_index_ = 0;
 };
 
-} // namespace vq_occupancy_compressor
+} 
 
-#endif // VQ_OCCUPANCY_COMPRESSOR_PATTERN_DICTIONARY_BUILDER_HPP
+#endif 

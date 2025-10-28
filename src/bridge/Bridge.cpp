@@ -41,7 +41,7 @@ PCCCompressionReport makeErrorReport(CompressionHandleImpl* impl, const std::str
     return report;
 }
 
-}  // namespace
+}  
 
 extern "C" VqoCompressionHandle* vqo_handle_create() {
     auto impl = std::make_unique<CompressionHandleImpl>();

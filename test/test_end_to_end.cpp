@@ -37,7 +37,7 @@ std::vector<fs::path> listDirectoryFiles(const fs::path& dir) {
   return files;
 }
 
-}  // namespace
+}  
 
 TEST(EndToEnd, CompressInMemoryWithoutTempFiles) {
   const fs::path temp_dir = fs::temp_directory_path() / fs::path("vq_occupancy_compressor_e2e");

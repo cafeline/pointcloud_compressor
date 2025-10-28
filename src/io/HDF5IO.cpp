@@ -13,14 +13,14 @@ namespace vq_occupancy_compressor {
 
 bool HDF5IO::write(const std::string& filename, const CompressedMapData& data) {
     auto t0 = std::chrono::high_resolution_clock::now();
-    // Check if directory exists
+    
     std::filesystem::path filepath(filename);
     if (!std::filesystem::exists(filepath.parent_path())) {
         last_error_ = "Directory does not exist: " + filepath.parent_path().string();
         return false;
     }
     
-    // Create HDF5 file
+    
     hid_t file_id = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
     if (file_id < 0) {
         last_error_ = "Failed to create HDF5 file: " + filename;
@@ -29,18 +29,18 @@ bool HDF5IO::write(const std::string& filename, const CompressedMapData& data) {
     
     bool success = true;
     
-    // Write all sections
+    
     success = success && writeMetadata(file_id, data);
     success = success && writeCompressionParams(file_id, data);
     success = success && writeDictionary(file_id, data);
     success = success && writeCompressedData(file_id, data);
     success = success && writeStatistics(file_id, data);
     
-    // Close file
+    
     H5Fclose(file_id);
     
     if (!success) {
-        // Remove incomplete file
+        
         std::filesystem::remove(filename);
     }
     
@@ -52,13 +52,13 @@ bool HDF5IO::write(const std::string& filename, const CompressedMapData& data) {
 
 bool HDF5IO::read(const std::string& filename, CompressedMapData& data) {
     auto t0 = std::chrono::high_resolution_clock::now();
-    // Check if file exists
+    
     if (!std::filesystem::exists(filename)) {
         last_error_ = "File does not exist: " + filename;
         return false;
     }
     
-    // Open HDF5 file
+    
     hid_t file_id = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
     if (file_id < 0) {
         last_error_ = "Failed to open HDF5 file: " + filename;
@@ -67,14 +67,14 @@ bool HDF5IO::read(const std::string& filename, CompressedMapData& data) {
     
     bool success = true;
     
-    // Read all sections
+    
     success = success && readMetadata(file_id, data);
     success = success && readCompressionParams(file_id, data);
     success = success && readDictionary(file_id, data);
     success = success && readCompressedData(file_id, data);
     success = success && readStatistics(file_id, data);
     
-    // Close file
+    
     H5Fclose(file_id);
     
     auto t1 = std::chrono::high_resolution_clock::now();
@@ -94,7 +94,7 @@ bool HDF5IO::isValidHDF5(const std::string& filename) const {
 
 bool HDF5IO::writeRawVoxelGrid(const std::string& filename, const RawVoxelGridData& data) {
     auto t0 = std::chrono::high_resolution_clock::now();
-    // Ensure directory exists
+    
     std::filesystem::path filepath(filename);
     if (!std::filesystem::exists(filepath.parent_path())) {
         last_error_ = "Directory does not exist: " + filepath.parent_path().string();
@@ -117,7 +117,7 @@ bool HDF5IO::writeRawVoxelGrid(const std::string& filename, const RawVoxelGridDa
         return false;
     }
 
-    // Create HDF5 file
+    
     hid_t file_id = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
     if (file_id < 0) {
         last_error_ = "Failed to create HDF5 file: " + filename;
@@ -125,12 +125,12 @@ bool HDF5IO::writeRawVoxelGrid(const std::string& filename, const RawVoxelGridDa
     }
 
     bool ok = true;
-    // Create group /raw_voxel_grid
+    
     hid_t group_id = H5Gcreate2(file_id, "/raw_voxel_grid", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     if (group_id < 0) {
         ok = false;
     } else {
-        // dimensions (3)
+        
         if (ok) {
             hsize_t dims1 = 3;
             hid_t space = H5Screate_simple(1, &dims1, NULL);
@@ -142,7 +142,7 @@ bool HDF5IO::writeRawVoxelGrid(const std::string& filename, const RawVoxelGridDa
             } else ok = false;
             H5Sclose(space);
         }
-        // voxel_size (scalar)
+        
         if (ok) {
             hsize_t one = 1;
             hid_t space = H5Screate_simple(1, &one, NULL);
@@ -154,7 +154,7 @@ bool HDF5IO::writeRawVoxelGrid(const std::string& filename, const RawVoxelGridDa
             } else ok = false;
             H5Sclose(space);
         }
-        // origin (3)
+        
         if (ok) {
             hsize_t dims1 = 3;
             hid_t space = H5Screate_simple(1, &dims1, NULL);
@@ -166,7 +166,7 @@ bool HDF5IO::writeRawVoxelGrid(const std::string& filename, const RawVoxelGridDa
             } else ok = false;
             H5Sclose(space);
         }
-        // occupied_voxels (N x 3)
+        
         if (ok) {
             hsize_t dims2[2] = {data.occupied_voxels.size(), 3};
             hid_t space = H5Screate_simple(2, dims2, NULL);
@@ -179,7 +179,7 @@ bool HDF5IO::writeRawVoxelGrid(const std::string& filename, const RawVoxelGridDa
             } else ok = false;
             H5Sclose(space);
         }
-        // voxel_values (dim_z x dim_y x dim_x, uint8 occupancy)
+        
         if (ok) {
             hsize_t dims3[3] = {
                 static_cast<hsize_t>(data.dim_z),
@@ -269,7 +269,7 @@ bool HDF5IO::readStringAttribute(hid_t loc_id, const std::string& name, std::str
     value.resize(size);
     herr_t status = H5Aread(attribute, datatype, &value[0]);
     
-    // Remove null terminator if present
+    
     size_t null_pos = value.find('\0');
     if (null_pos != std::string::npos) {
         value.resize(null_pos);
@@ -331,42 +331,42 @@ bool HDF5IO::writeCompressionParams(hid_t file_id, const CompressedMapData& data
         return false;
     }
     
-    // Write scalar datasets
+    
     hsize_t dims = 1;
     hid_t dataspace = H5Screate_simple(1, &dims, NULL);
     
-    // voxel_size
+    
     hid_t dataset = H5Dcreate2(group_id, "voxel_size", H5T_NATIVE_FLOAT, dataspace,
                                H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     H5Dwrite(dataset, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data.voxel_size);
     H5Dclose(dataset);
     
-    // dictionary_size
+    
     dataset = H5Dcreate2(group_id, "dictionary_size", H5T_NATIVE_UINT32, dataspace,
                          H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     H5Dwrite(dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data.dictionary_size);
     H5Dclose(dataset);
     
-    // pattern_bits
+    
     dataset = H5Dcreate2(group_id, "pattern_bits", H5T_NATIVE_UINT32, dataspace,
                          H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     H5Dwrite(dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data.pattern_bits);
     H5Dclose(dataset);
     
-    // block_size
+    
     dataset = H5Dcreate2(group_id, "block_size", H5T_NATIVE_UINT32, dataspace,
                          H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     H5Dwrite(dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data.block_size);
     H5Dclose(dataset);
 
-    // block index bit width (helps consumers pick correct integer width for block indices)
+    
     uint32_t bit_width = static_cast<uint32_t>(data.block_index_bit_width);
     dataset = H5Dcreate2(group_id, "block_index_bit_width", H5T_NATIVE_UINT32, dataspace,
                          H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     H5Dwrite(dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bit_width);
     H5Dclose(dataset);
     
-    // grid_origin (vector length 3)
+    
     H5Sclose(dataspace);
     hsize_t vec_dims = 3;
     dataspace = H5Screate_simple(1, &vec_dims, NULL);
@@ -376,7 +376,7 @@ bool HDF5IO::writeCompressionParams(hid_t file_id, const CompressedMapData& data
     H5Dwrite(dataset, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, origin_buf);
     H5Dclose(dataset);
 
-    // Grid voxel dimensions
+    
     H5Sclose(dataspace);
     dataspace = H5Screate_simple(1, &vec_dims, NULL);
     dataset = H5Dcreate2(group_id, "grid_dimensions", H5T_NATIVE_INT32, dataspace,
@@ -401,38 +401,38 @@ bool HDF5IO::readCompressionParams(hid_t file_id, CompressedMapData& data) {
         return false;
     }
     
-    // Read scalar datasets
+    
     hid_t dataset;
     
-    // voxel_size
+    
     if (H5Lexists(group_id, "voxel_size", H5P_DEFAULT)) {
         dataset = H5Dopen2(group_id, "voxel_size", H5P_DEFAULT);
         H5Dread(dataset, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data.voxel_size);
         H5Dclose(dataset);
     }
     
-    // dictionary_size
+    
     if (H5Lexists(group_id, "dictionary_size", H5P_DEFAULT)) {
         dataset = H5Dopen2(group_id, "dictionary_size", H5P_DEFAULT);
         H5Dread(dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data.dictionary_size);
         H5Dclose(dataset);
     }
     
-    // pattern_bits
+    
     if (H5Lexists(group_id, "pattern_bits", H5P_DEFAULT)) {
         dataset = H5Dopen2(group_id, "pattern_bits", H5P_DEFAULT);
         H5Dread(dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data.pattern_bits);
         H5Dclose(dataset);
     }
     
-    // block_size
+    
     if (H5Lexists(group_id, "block_size", H5P_DEFAULT)) {
         dataset = H5Dopen2(group_id, "block_size", H5P_DEFAULT);
         H5Dread(dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data.block_size);
         H5Dclose(dataset);
     }
 
-    // block index bit width (optional metadata)
+    
     if (H5Lexists(group_id, "block_index_bit_width", H5P_DEFAULT)) {
         uint32_t bit_width = 0;
         dataset = H5Dopen2(group_id, "block_index_bit_width", H5P_DEFAULT);
@@ -443,7 +443,7 @@ bool HDF5IO::readCompressionParams(hid_t file_id, CompressedMapData& data) {
         }
     }
     
-    // grid_origin
+    
     if (H5Lexists(group_id, "grid_origin", H5P_DEFAULT)) {
         dataset = H5Dopen2(group_id, "grid_origin", H5P_DEFAULT);
         float origin_buf[3] = {0.0f, 0.0f, 0.0f};
@@ -454,7 +454,7 @@ bool HDF5IO::readCompressionParams(hid_t file_id, CompressedMapData& data) {
         H5Dclose(dataset);
     }
 
-    // grid_dimensions (optional for legacy archives)
+    
     if (H5Lexists(group_id, "grid_dimensions", H5P_DEFAULT)) {
         dataset = H5Dopen2(group_id, "grid_dimensions", H5P_DEFAULT);
         int32_t dims_buf[3] = {0, 0, 0};
@@ -479,7 +479,7 @@ bool HDF5IO::writeDictionary(hid_t file_id, const CompressedMapData& data) {
         return false;
     }
     
-    // Write pattern_length
+    
     hsize_t dims = 1;
     hid_t dataspace = H5Screate_simple(1, &dims, NULL);
     hid_t dataset = H5Dcreate2(group_id, "pattern_length", H5T_NATIVE_UINT32, dataspace,
@@ -488,7 +488,7 @@ bool HDF5IO::writeDictionary(hid_t file_id, const CompressedMapData& data) {
     H5Dclose(dataset);
     H5Sclose(dataspace);
     
-    // Write patterns array
+    
     if (!data.dictionary_patterns.empty()) {
         hsize_t array_dims = data.dictionary_patterns.size();
         dataspace = H5Screate_simple(1, &array_dims, NULL);
@@ -506,7 +506,7 @@ bool HDF5IO::writeDictionary(hid_t file_id, const CompressedMapData& data) {
 
 bool HDF5IO::readDictionary(hid_t file_id, CompressedMapData& data) {
     if (!H5Lexists(file_id, "/dictionary", H5P_DEFAULT)) {
-        // Dictionary is optional
+        
         return true;
     }
     
@@ -515,14 +515,14 @@ bool HDF5IO::readDictionary(hid_t file_id, CompressedMapData& data) {
         return false;
     }
     
-    // Read pattern_length
+    
     if (H5Lexists(group_id, "pattern_length", H5P_DEFAULT)) {
         hid_t dataset = H5Dopen2(group_id, "pattern_length", H5P_DEFAULT);
         H5Dread(dataset, H5T_NATIVE_UINT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data.pattern_length);
         H5Dclose(dataset);
     }
     
-    // Read patterns array
+    
     if (H5Lexists(group_id, "patterns", H5P_DEFAULT)) {
         hid_t dataset = H5Dopen2(group_id, "patterns", H5P_DEFAULT);
         hid_t dataspace = H5Dget_space(dataset);
@@ -656,7 +656,7 @@ bool HDF5IO::writeCompressedData(hid_t file_id, const CompressedMapData& data) {
         }
     }
 
-    // block_dims dataset
+    
     {
         hsize_t dims = 3;
         hid_t dataspace = H5Screate_simple(1, &dims, nullptr);
@@ -672,7 +672,7 @@ bool HDF5IO::writeCompressedData(hid_t file_id, const CompressedMapData& data) {
         }
     }
 
-    // Retain point_count dataset for compatibility (stores number of blocks)
+    
     {
         hsize_t dims = 1;
         hid_t dataspace = H5Screate_simple(1, &dims, nullptr);
@@ -694,7 +694,7 @@ bool HDF5IO::writeCompressedData(hid_t file_id, const CompressedMapData& data) {
 
 bool HDF5IO::readCompressedData(hid_t file_id, CompressedMapData& data) {
     if (!H5Lexists(file_id, "/compressed_data", H5P_DEFAULT)) {
-        // Compressed data is optional
+        
         return true;
     }
 
@@ -814,7 +814,7 @@ bool HDF5IO::writeStatistics(hid_t file_id, const CompressedMapData& data) {
     hsize_t dims = 1;
     hid_t dataspace = H5Screate_simple(1, &dims, NULL);
     
-    // Write scalar values
+    
     hid_t dataset = H5Dcreate2(group_id, "original_points", H5T_NATIVE_UINT64, dataspace,
                                H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     H5Dwrite(dataset, H5T_NATIVE_UINT64, H5S_ALL, H5S_ALL, H5P_DEFAULT, &data.original_points);
@@ -832,7 +832,7 @@ bool HDF5IO::writeStatistics(hid_t file_id, const CompressedMapData& data) {
     
     H5Sclose(dataspace);
     
-    // Write bounding box
+    
     hsize_t bbox_dims[2] = {2, 3};
     dataspace = H5Screate_simple(2, bbox_dims, NULL);
     dataset = H5Dcreate2(group_id, "bounding_box", H5T_NATIVE_DOUBLE, dataspace,
@@ -853,7 +853,7 @@ bool HDF5IO::writeStatistics(hid_t file_id, const CompressedMapData& data) {
 
 bool HDF5IO::readStatistics(hid_t file_id, CompressedMapData& data) {
     if (!H5Lexists(file_id, "/statistics", H5P_DEFAULT)) {
-        // Statistics is optional
+        
         return true;
     }
     
@@ -862,7 +862,7 @@ bool HDF5IO::readStatistics(hid_t file_id, CompressedMapData& data) {
         return false;
     }
     
-    // Read scalar values
+    
     hid_t dataset;
     
     if (H5Lexists(group_id, "original_points", H5P_DEFAULT)) {
@@ -883,7 +883,7 @@ bool HDF5IO::readStatistics(hid_t file_id, CompressedMapData& data) {
         H5Dclose(dataset);
     }
     
-    // Read bounding box
+    
     if (H5Lexists(group_id, "bounding_box", H5P_DEFAULT)) {
         dataset = H5Dopen2(group_id, "bounding_box", H5P_DEFAULT);
         double bbox[6];
@@ -899,4 +899,4 @@ bool HDF5IO::readStatistics(hid_t file_id, CompressedMapData& data) {
     return true;
 }
 
-} // namespace vq_occupancy_compressor
+} 

@@ -19,6 +19,6 @@ struct OptimizeWorkflowResult {
 
 OptimizeWorkflowResult runOptimizeWorkflow(const std::string& config_path);
 
-}  // namespace vq_occupancy_compressor::cli
+}  
 
-#endif  // VQ_OCCUPANCY_COMPRESSOR_CLI_OPTIMIZE_WORKFLOW_HPP
+#endif  

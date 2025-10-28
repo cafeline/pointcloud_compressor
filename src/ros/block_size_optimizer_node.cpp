@@ -21,7 +21,7 @@ namespace vq_occupancy_compressor {
 class BlockSizeOptimizerNode : public rclcpp::Node {
 public:
     BlockSizeOptimizerNode() : Node("block_size_optimizer") {
-        // Declare parameters with defaults
+        
         this->declare_parameter<std::string>("input_file", "");
         this->declare_parameter<int>("min_block_size", 4);
         this->declare_parameter<int>("max_block_size", 32);
@@ -30,12 +30,12 @@ public:
         this->declare_parameter<bool>("verbose", false);
         this->declare_parameter<bool>("run_once", true);
         
-        // Publishers for results
+        
         result_pub_ = this->create_publisher<std_msgs::msg::String>("optimization_result", 10);
         optimal_block_size_pub_ = this->create_publisher<std_msgs::msg::Int32>("optimal_block_size", 10);
         compression_ratio_pub_ = this->create_publisher<std_msgs::msg::Float32>("best_compression_ratio", 10);
         
-        // Get parameters
+        
         input_file_ = this->get_parameter("input_file").as_string();
         min_block_size_ = this->get_parameter("min_block_size").as_int();
         max_block_size_ = this->get_parameter("max_block_size").as_int();
@@ -57,7 +57,7 @@ public:
             return;
         }
 
-        // Initialize compressor
+        
         compressor_ = std::make_unique<VqOccupancyCompressor>(compression_setup_.settings);
         
         RCLCPP_INFO(this->get_logger(), 
@@ -70,11 +70,11 @@ public:
         RCLCPP_INFO(this->get_logger(), 
                     "Voxel size: %.3f", voxel_size_);
         
-        // If run_once is true, execute immediately
+        
         if (run_once_) {
             executeOptimization();
         } else {
-            // Otherwise, create a service for on-demand optimization
+            
             optimization_service_ = this->create_service<std_srvs::srv::Trigger>(
                 "run_optimization",
                 std::bind(&BlockSizeOptimizerNode::handleOptimizationRequest, this,
@@ -100,7 +100,7 @@ private:
         
         auto start_time = this->now();
         
-        // Run optimization
+        
         auto result = compressor_->findOptimalBlockSize(
             input_file_, min_block_size_, max_block_size_, step_size_, verbose_);
         
@@ -108,12 +108,12 @@ private:
         (void)start_time;
         (void)end_time;
         
-        // Check if optimization was successful
+        
         if (result.optimal_block_size < 0) {
             RCLCPP_ERROR(this->get_logger(), "Optimization failed!");
             publishFailure();
             if (run_once_) {
-                // Schedule shutdown after a short delay
+                
                 auto timer = this->create_wall_timer(
                     std::chrono::milliseconds(100),
                     [this]() {
@@ -128,14 +128,14 @@ private:
             RCLCPP_INFO(this->get_logger(), "%s", line.c_str());
         }
         
-        // Store last result for analysis
+        
         last_result_ = result;
         
-        // Calculate and display 1 byte/voxel comparison
-        // Note: This requires grid information, so we'll estimate based on the input file
+        
+        
         calculateAndDisplay1ByteComparison();
         
-        // Calculate grid info for 1 byte/voxel comparison
+        
         PointCloud temp_cloud;
         std::string ext = input_file_.substr(input_file_.find_last_of('.'));
         if (ext == ".ply") {
@@ -152,10 +152,10 @@ private:
         size_t one_byte_per_voxel_size = total_voxels * 1;
         size_t original_point_cloud_size = temp_cloud.points.size() * sizeof(Point3D);
         
-        // Log all tested results with 1 byte/voxel comparison
+        
         RCLCPP_INFO(this->get_logger(), "All tested block sizes (ratio vs 1 byte/voxel):");
         for (const auto& [block_size, ratio] : result.tested_results) {
-            // Calculate actual compressed size from ratio
+            
             size_t compressed_size = static_cast<size_t>(ratio * original_point_cloud_size);
             float ratio_vs_one_byte = static_cast<float>(compressed_size) / static_cast<float>(one_byte_per_voxel_size);
             
@@ -170,16 +170,16 @@ private:
             }
         }
         
-        // Publish results
+        
         publishResults(result);
         
-        // Auto compress if requested
+        
         performCompression(result.optimal_block_size);
         
-        // Shutdown if run_once mode
+        
         if (run_once_) {
             RCLCPP_INFO(this->get_logger(), "Optimization complete. Shutting down node.");
-            // Schedule shutdown after a short delay to allow cleanup
+            
             auto timer = this->create_wall_timer(
                 std::chrono::milliseconds(100),
                 [this]() {
@@ -192,7 +192,7 @@ private:
         const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
         std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
         
-        (void)request; // Unused
+        (void)request; 
         
         try {
             executeOptimization();
@@ -206,7 +206,7 @@ private:
     }
     
     void publishResults(const BlockSizeOptimizationResult& result) {
-        // Publish detailed result as JSON string
+        
         std::stringstream ss;
         ss << "{\n";
         ss << "  \"optimal_block_size\": " << result.optimal_block_size << ",\n";
@@ -229,7 +229,7 @@ private:
         msg.data = ss.str();
         result_pub_->publish(msg);
         
-        // Publish individual values
+        
         auto block_size_msg = std_msgs::msg::Int32();
         block_size_msg.data = result.optimal_block_size;
         optimal_block_size_pub_->publish(block_size_msg);
@@ -278,7 +278,7 @@ private:
         }
     }
     
-    // Parameters
+    
     std::string input_file_;
     int min_block_size_;
     int max_block_size_;
@@ -287,24 +287,24 @@ private:
     bool verbose_;
     bool run_once_;
     
-    // ROS interfaces
+    
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr result_pub_;
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr optimal_block_size_pub_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr compression_ratio_pub_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr optimization_service_;
     
-    // Compressor
+    
     std::unique_ptr<VqOccupancyCompressor> compressor_;
     config::CompressionSetup compression_setup_;
     
-    // Store last optimization result for analysis
+    
     BlockSizeOptimizationResult last_result_;
     
     void calculateAndDisplay1ByteComparison() {
-        // Quick voxelization to get grid dimensions
+        
         PointCloud cloud;
         
-        // Load point cloud based on file extension
+        
         std::string ext = input_file_.substr(input_file_.find_last_of('.'));
         if (ext == ".ply") {
             PlyIO::readPlyFile(input_file_, cloud);
@@ -321,16 +321,16 @@ private:
             size_t total_voxels = static_cast<size_t>(dims.x) * dims.y * dims.z;
             size_t occupied_voxels = grid.getOccupiedVoxelCount();
             
-            // Calculate sizes
-            size_t one_byte_per_voxel_size = total_voxels * 1;  // 1 byte per voxel for ALL voxels
+            
+            size_t one_byte_per_voxel_size = total_voxels * 1;  
             size_t original_point_cloud_size = cloud.points.size() * sizeof(Point3D);
             
-            // Calculate real-world dimensions
+            
             float world_size_x = dims.x * voxel_size_;
             float world_size_y = dims.y * voxel_size_;
             float world_size_z = dims.z * voxel_size_;
             
-            // Calculate 1 bit/voxel size
+            
             size_t one_bit_per_voxel_size = (total_voxels + 7) / 8;
             
             RCLCPP_INFO(this->get_logger(), 
@@ -351,25 +351,25 @@ private:
                        "1 bit/voxel map size: %zu bytes", 
                        one_bit_per_voxel_size);
             
-            // Calculate our best compression vs 1 byte/voxel
+            
             if (!last_result_.tested_results.empty()) {
-                // Find best compression size (need to recalculate from ratio)
+                
                 size_t best_compressed_size = static_cast<size_t>(
                     last_result_.best_compression_ratio * original_point_cloud_size);
                 
-                // Estimate codebook and index sizes based on optimal block size
+                
                 int optimal_bs = last_result_.optimal_block_size;
                 size_t pattern_bytes = (optimal_bs * optimal_bs * optimal_bs + 7) / 8;
                 (void)pattern_bytes;
                 
-                // Estimate from grid
+                
                 int x_blocks = (dims.x + optimal_bs - 1) / optimal_bs;
                 int y_blocks = (dims.y + optimal_bs - 1) / optimal_bs;
                 int z_blocks = (dims.z + optimal_bs - 1) / optimal_bs;
                 size_t total_blocks = x_blocks * y_blocks * z_blocks;
                 (void)total_blocks;
                 
-                // Rough estimate of codebook vs index split (typical: 20% codebook, 80% index)
+                
                 size_t estimated_codebook = best_compressed_size * 0.2;
                 size_t estimated_index = best_compressed_size * 0.8;
                 
@@ -401,7 +401,7 @@ private:
     }
 };
 
-} // namespace vq_occupancy_compressor
+} 
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);

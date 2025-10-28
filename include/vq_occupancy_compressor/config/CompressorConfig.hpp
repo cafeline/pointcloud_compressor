@@ -41,6 +41,6 @@ BlockSizeOptimizationConfig loadBlockSizeOptimizationConfigFromYaml(const std::s
 
 vq_occupancy_compressor::CompressionSettings settingsFromConfig(const CompressorConfig& config);
 
-}  // namespace vq_occupancy_compressor::config
+}  
 
-#endif  // VQ_OCCUPANCY_COMPRESSOR_CONFIG_COMPRESSOR_CONFIG_HPP
+#endif  

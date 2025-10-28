@@ -28,14 +28,14 @@ bool PatternDictionaryBuilder::buildDictionary(const std::vector<std::vector<uin
     for (const auto& pattern : patterns) {
         auto it = pattern_to_index_.find(pattern);
         if (it == pattern_to_index_.end()) {
-            // New unique pattern
+            
             pattern_to_index_[pattern] = next_index;
             unique_patterns_.push_back(pattern);
             pattern_indices_.push_back(next_index);
             max_index_ = next_index;
             next_index++;
         } else {
-            // Existing pattern
+            
             pattern_indices_.push_back(it->second);
         }
     }
@@ -77,11 +77,11 @@ float PatternDictionaryBuilder::getCompressionRatio() const {
         return 1.0f;
     }
     
-    // Calculate original size - sum of all patterns if stored without dictionary
+    
     size_t original_bits = 0;
     size_t avg_pattern_size = 0;
     
-    // Calculate average pattern size
+    
     for (const auto& pattern : unique_patterns_) {
         avg_pattern_size += pattern.size();
     }
@@ -89,16 +89,16 @@ float PatternDictionaryBuilder::getCompressionRatio() const {
         avg_pattern_size /= unique_patterns_.size();
     }
     
-    // Original size = number of patterns * average pattern size in bits
+    
     original_bits = pattern_indices_.size() * avg_pattern_size * 8;
     
-    // Calculate compressed size (dictionary + indices)
+    
     size_t dictionary_bits = 0;
     for (const auto& pattern : unique_patterns_) {
         dictionary_bits += pattern.size() * 8;
     }
     
-    size_t index_bits = pattern_indices_.size() * 16;  // 16 bits per index
+    size_t index_bits = pattern_indices_.size() * 16;  
     size_t compressed_bits = dictionary_bits + index_bits;
     
     if (original_bits == 0) {
@@ -108,4 +108,4 @@ float PatternDictionaryBuilder::getCompressionRatio() const {
     return static_cast<float>(compressed_bits) / static_cast<float>(original_bits);
 }
 
-} // namespace vq_occupancy_compressor
+} 

@@ -30,4 +30,4 @@ std::vector<uint32_t> convertBlockIndicesToU32(const std::vector<uint64_t>& indi
     return converted;
 }
 
-}  // namespace vq_occupancy_compressor::common
+}  

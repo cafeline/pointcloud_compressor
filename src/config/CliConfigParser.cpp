@@ -17,4 +17,4 @@ std::string parseConfigPath(const std::vector<std::string>& args) {
     return args.front();
 }
 
-}  // namespace vq_occupancy_compressor::config
+}  

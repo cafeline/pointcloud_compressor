@@ -157,4 +157,4 @@ bool runCompression(const vq_occupancy_compressor::config::CompressionSetup& set
     return true;
 }
 
-}  // namespace vq_occupancy_compressor::services
+}  

@@ -38,4 +38,4 @@ std::vector<std::string> validateCompressionSetup(const CompressionSetup& setup)
     return setup.config.validate(true);
 }
 
-}  // namespace vq_occupancy_compressor::config
+}  

@@ -42,7 +42,7 @@ void printCompressionSummary(const PCCCompressionReport& report, const std::stri
     std::cout << "  Output archive   : " << output_h5 << "\n";
 }
 
-}  // namespace
+}  
 
 int main(int argc, char** argv) {
     if (argc < 2) {

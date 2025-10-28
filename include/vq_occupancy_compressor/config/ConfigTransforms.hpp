@@ -23,6 +23,6 @@ CompressionSetup buildCompressionSetup(const CompressorConfig& config);
 
 std::vector<std::string> validateCompressionSetup(const CompressionSetup& setup);
 
-}  // namespace vq_occupancy_compressor::config
+}  
 
-#endif  // VQ_OCCUPANCY_COMPRESSOR_CONFIG_CONFIG_TRANSFORMS_HPP
+#endif  

@@ -5,10 +5,10 @@ vq_occupancy_compressor_node:
     block_size: 13
     min_points_threshold: 2
 
-    # Publishing / saving
+    
     publish_occupied_voxel_markers: true
     save_hdf5: true
     hdf5_output_file: "/home/ryo/raspicat-sim-docker-vq/raspicat_vq_ws/src/maps/tsudanuma_voxelsize_01_compressed_map.h5"
-    # Save raw occupancy voxel grid
+    
     save_raw_hdf5: true
     raw_hdf5_output_file: "/home/ryo/raspicat-sim-docker-vq/raspicat_vq_ws/src/maps/tsudanuma_voxelsize_01_raw_map.h5"

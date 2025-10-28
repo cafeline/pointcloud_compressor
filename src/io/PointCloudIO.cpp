@@ -48,7 +48,7 @@ bool PointCloudIO::savePointCloud(const std::string& filename, const PointCloud&
 bool PointCloudIO::loadPointCloudWithInfo(const std::string& filename, PointCloud& cloud, FileInfo& info) {
     cloud.clear();
     
-    // Initialize info
+    
     info = FileInfo();
     
     if (!std::filesystem::exists(filename)) {
@@ -56,18 +56,18 @@ bool PointCloudIO::loadPointCloudWithInfo(const std::string& filename, PointClou
         return false;
     }
     
-    // Detect formats
+    
     info.detected_format = FileFormatDetector::detectByContent(filename);
     info.extension_format = FileFormatDetector::detectByExtension(filename);
     
-    // Check for format mismatch
+    
     if (info.detected_format != FileFormat::UNKNOWN && 
         info.extension_format != FileFormat::UNKNOWN &&
         info.detected_format != info.extension_format) {
         info.format_mismatch = true;
     }
     
-    // Use detected format for loading (prefer content over extension)
+    
     FileFormat load_format = (info.detected_format != FileFormat::UNKNOWN) ? 
                              info.detected_format : info.extension_format;
     
@@ -95,9 +95,9 @@ bool PointCloudIO::validateFile(const std::string& filename) {
         return false;
     }
 
-    // detectFormat() already performs lightweight header validation.
-    // Avoid an additional full file load here to prevent duplicated I/O
-    // (especially costly for large PLY files).
+    
+    
+    
     return FileFormatDetector::isSupportedFormat(format);
 }
 
@@ -110,7 +110,7 @@ bool PointCloudIO::hasSupportedExtension(const std::string& filename) {
     return FileFormatDetector::isSupportedFormat(format);
 }
 
-// Private helper functions
+
 bool PointCloudIO::loadPcdFile(const std::string& filename, PointCloud& cloud) {
     return PcdIO::readPcdFile(filename, cloud);
 }
@@ -132,4 +132,4 @@ std::string PointCloudIO::getErrorMessage(const std::string& operation, const st
     return "Failed to " + operation + " " + format_str + " file: " + filename;
 }
 
-} // namespace vq_occupancy_compressor
+} 

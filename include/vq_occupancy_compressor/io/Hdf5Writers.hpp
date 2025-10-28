@@ -30,6 +30,6 @@ bool writeRawVoxelGrid(const std::string& output_path,
                        const PCCCompressionReport& report,
                        std::string& error_message);
 
-}  // namespace vq_occupancy_compressor::io
+}  
 
-#endif  // VQ_OCCUPANCY_COMPRESSOR_IO_HDF5_WRITERS_HPP
+#endif  

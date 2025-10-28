@@ -495,4 +495,4 @@ bool VqOccupancyCompressor::buildDictionaryAndEncode(const std::vector<VoxelBloc
     return true;
 }
 
-}  // namespace vq_occupancy_compressor
+}  

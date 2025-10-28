@@ -49,7 +49,7 @@ std::string writeOptimizeConfig(const fs::path& dir,
   return config_file.string();
 }
 
-}  // namespace
+}  
 
 TEST(CliOptimize, GeneratesCompressedArtifactByDefault) {
   const fs::path temp_dir = fs::temp_directory_path() / "vq_occupancy_compressor_cli_opt";
