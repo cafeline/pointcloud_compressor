@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include <pointcloud_compressor/io/HDF5IO.hpp>
+#include <vq_occupancy_compressor/io/HDF5IO.hpp>
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
@@ -9,7 +9,7 @@
 #include <sstream>
 #include <vector>
 
-namespace pointcloud_compressor {
+namespace vq_occupancy_compressor {
 
 bool HDF5IO::write(const std::string& filename, const CompressedMapData& data) {
     auto t0 = std::chrono::high_resolution_clock::now();
@@ -899,4 +899,4 @@ bool HDF5IO::readStatistics(hid_t file_id, CompressedMapData& data) {
     return true;
 }
 
-} // namespace pointcloud_compressor
+} // namespace vq_occupancy_compressor

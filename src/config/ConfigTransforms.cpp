@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/config/ConfigTransforms.hpp"
+#include "vq_occupancy_compressor/config/ConfigTransforms.hpp"
 
 #include <vector>
 
-namespace pointcloud_compressor::config {
+namespace vq_occupancy_compressor::config {
 
 PCCCompressionRequest toCompressionRequest(const CompressorConfig& config,
-                                           const pointcloud_compressor::CompressionSettings& settings) {
+                                           const vq_occupancy_compressor::CompressionSettings& settings) {
     PCCCompressionRequest request{};
     request.input_file = config.input_file.c_str();
     request.voxel_size = static_cast<double>(settings.voxel_size);
@@ -38,4 +38,4 @@ std::vector<std::string> validateCompressionSetup(const CompressionSetup& setup)
     return setup.config.validate(true);
 }
 
-}  // namespace pointcloud_compressor::config
+}  // namespace vq_occupancy_compressor::config

@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/config/CliConfigParser.hpp"
+#include "vq_occupancy_compressor/config/CliConfigParser.hpp"
 
 #include <stdexcept>
 
-namespace pointcloud_compressor::config {
+namespace vq_occupancy_compressor::config {
 
 std::string parseConfigPath(const std::vector<std::string>& args) {
     if (args.size() != 1) {
@@ -17,4 +17,4 @@ std::string parseConfigPath(const std::vector<std::string>& args) {
     return args.front();
 }
 
-}  // namespace pointcloud_compressor::config
+}  // namespace vq_occupancy_compressor::config

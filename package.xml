@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>pointcloud_compressor</name>
+  <name>vq_occupancy_compressor</name>
   <version>1.0.0</version>
   <description>Point cloud compression package using vector quantization and block pattern dictionary</description>
   <maintainer email="s24s1040du@s.chibakoudai.jp">ryo</maintainer>

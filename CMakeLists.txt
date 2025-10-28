@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(pointcloud_compressor)
+project(vq_occupancy_compressor)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -49,9 +49,7 @@ set(CORE_SOURCES
   src/model/VoxelGrid.cpp
   src/core/VoxelProcessor.cpp
   src/core/PatternDictionaryBuilder.cpp
-  src/core/PointCloudCompressor.cpp
-  src/core/CompressionReportFormatter.cpp
-  src/core/BlockSizeReportFormatter.cpp
+  src/core/VqOccupancyCompressor.cpp
   src/config/CompressorConfig.cpp
   src/config/CliConfigParser.cpp
   src/config/ConfigTransforms.cpp
@@ -70,7 +68,7 @@ add_library(${PROJECT_NAME}_bridge
   src/common/CompressionDataUtils.cpp
   src/common/CompressionArtifacts.cpp
   src/services/CompressionExecutor.cpp
-  src/io/CompressionReportBuilder.cpp
+  src/report/ReportUtilities.cpp
   src/io/Hdf5Writers.cpp
 )
 target_link_libraries(${PROJECT_NAME}_bridge PUBLIC ${PROJECT_NAME}_core)
@@ -102,7 +100,7 @@ add_executable(${PROJECT_NAME}_cli src/apps/cli_main.cpp)
 target_link_libraries(${PROJECT_NAME}_cli ${PROJECT_NAME}_cli_support)
 
 # ROS2 Node executable
-add_executable(${PROJECT_NAME}_node src/ros/pointcloud_compressor_node.cpp)
+add_executable(${PROJECT_NAME}_node src/ros/vq_occupancy_compressor_node.cpp)
 target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME}_bridge)
 ament_target_dependencies(${PROJECT_NAME}_node
   rclcpp
@@ -121,7 +119,7 @@ target_link_libraries(${PROJECT_NAME}_node "${cpp_typesupport_target}")
 
 # Build block size optimizer node
 add_executable(block_size_optimizer_node src/ros/block_size_optimizer_node.cpp)
-target_link_libraries(block_size_optimizer_node ${PROJECT_NAME}_core)
+target_link_libraries(block_size_optimizer_node ${PROJECT_NAME}_bridge)
 ament_target_dependencies(block_size_optimizer_node
   rclcpp
   std_msgs

@@ -4,7 +4,7 @@
 #include <fstream>
 #include <string>
 
-#include "pointcloud_compressor/cli/OptimizeWorkflow.hpp"
+#include "vq_occupancy_compressor/cli/OptimizeWorkflow.hpp"
 
 namespace fs = std::filesystem;
 
@@ -52,7 +52,7 @@ std::string writeOptimizeConfig(const fs::path& dir,
 }  // namespace
 
 TEST(CliOptimize, GeneratesCompressedArtifactByDefault) {
-  const fs::path temp_dir = fs::temp_directory_path() / "pointcloud_compressor_cli_opt";
+  const fs::path temp_dir = fs::temp_directory_path() / "vq_occupancy_compressor_cli_opt";
   if (fs::exists(temp_dir)) {
     fs::remove_all(temp_dir);
   }
@@ -65,7 +65,7 @@ TEST(CliOptimize, GeneratesCompressedArtifactByDefault) {
 
   ASSERT_FALSE(fs::exists(output_file));
 
-  const auto result = pointcloud_compressor::cli::runOptimizeWorkflow(config_path);
+  const auto result = vq_occupancy_compressor::cli::runOptimizeWorkflow(config_path);
 
   EXPECT_TRUE(fs::exists(output_file));
   EXPECT_GT(fs::file_size(output_file), 0u);

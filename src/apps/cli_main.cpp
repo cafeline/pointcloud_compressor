@@ -1,16 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/config/CliConfigParser.hpp"
-#include "pointcloud_compressor/config/ConfigTransforms.hpp"
-#include "pointcloud_compressor/config/CompressorConfig.hpp"
-#include "pointcloud_compressor/cli/OptimizeWorkflow.hpp"
-#include "pointcloud_compressor/core/BlockSizeReportFormatter.hpp"
-#include "pointcloud_compressor/core/CompressionReportFormatter.hpp"
-#include "pointcloud_compressor/core/PointCloudCompressor.hpp"
-#include "pointcloud_compressor/io/Hdf5Writers.hpp"
-#include "pointcloud_compressor/utils/ErrorAccumulator.hpp"
-#include "pointcloud_compressor/services/CompressionExecutor.hpp"
+#include "vq_occupancy_compressor/config/CliConfigParser.hpp"
+#include "vq_occupancy_compressor/config/ConfigTransforms.hpp"
+#include "vq_occupancy_compressor/config/CompressorConfig.hpp"
+#include "vq_occupancy_compressor/cli/OptimizeWorkflow.hpp"
+#include "vq_occupancy_compressor/report/ReportUtilities.hpp"
+#include "vq_occupancy_compressor/core/VqOccupancyCompressor.hpp"
+#include "vq_occupancy_compressor/io/Hdf5Writers.hpp"
+#include "vq_occupancy_compressor/utils/ErrorAccumulator.hpp"
+#include "vq_occupancy_compressor/services/CompressionExecutor.hpp"
 
 #include <cmath>
 #include <cstdint>
@@ -22,14 +21,14 @@
 
 namespace {
 
-using pointcloud_compressor::config::CompressionSetup;
-using pointcloud_compressor::config::CompressorConfig;
-using pointcloud_compressor::config::buildCompressionSetup;
-using pointcloud_compressor::config::loadCompressorConfigFromYaml;
-using pointcloud_compressor::config::parseConfigPath;
-using pointcloud_compressor::config::validateCompressionSetup;
-using pointcloud_compressor::io::CompressionReportBuilder;
-using pointcloud_compressor::services::runCompression;
+using vq_occupancy_compressor::config::CompressionSetup;
+using vq_occupancy_compressor::config::CompressorConfig;
+using vq_occupancy_compressor::config::buildCompressionSetup;
+using vq_occupancy_compressor::config::loadCompressorConfigFromYaml;
+using vq_occupancy_compressor::config::parseConfigPath;
+using vq_occupancy_compressor::config::validateCompressionSetup;
+using vq_occupancy_compressor::io::CompressionReportBuilder;
+using vq_occupancy_compressor::services::runCompression;
 
 void printUsage(const char* program_name) {
     std::cout << "Usage: " << program_name << " <command> [options]\n";
@@ -39,7 +38,7 @@ void printUsage(const char* program_name) {
 }
 
 void printCompressionSummary(const PCCCompressionReport& report, const std::string& output_h5) {
-    std::cout << pointcloud_compressor::formatCompressionSummary(report) << "\n";
+    std::cout << vq_occupancy_compressor::formatCompressionSummary(report) << "\n";
     std::cout << "  Output archive   : " << output_h5 << "\n";
 }
 
@@ -81,19 +80,19 @@ int main(int argc, char** argv) {
                 return 1;
             }
 
-            pointcloud_compressor::utils::ErrorAccumulator error_acc;
+            vq_occupancy_compressor::utils::ErrorAccumulator error_acc;
             std::string compression_error;
             const bool compression_success = runCompression(
                 setup,
                 [&](const PCCCompressionReport& report,
-                    pointcloud_compressor::io::CompressionReportBuilder& builder) {
+                    vq_occupancy_compressor::io::CompressionReportBuilder& builder) {
                     auto map_data = builder.toCompressedMapData(report,
                                                                 setup.settings.voxel_size,
                                                                 setup.settings.block_size);
 
                     if (setup.request.save_hdf5 && setup.request.hdf5_output_path) {
                         std::string err;
-                        if (!pointcloud_compressor::io::writeCompressedMap(setup.config.hdf5_output_file,
+                        if (!vq_occupancy_compressor::io::writeCompressedMap(setup.config.hdf5_output_file,
                                                                            map_data,
                                                                            err)) {
                             error_acc.add(err);
@@ -106,7 +105,7 @@ int main(int argc, char** argv) {
 
                     if (setup.request.save_raw_hdf5 && setup.request.raw_hdf5_output_path) {
                         std::string err;
-                        if (pointcloud_compressor::io::writeRawVoxelGrid(setup.config.raw_hdf5_output_file,
+                        if (vq_occupancy_compressor::io::writeRawVoxelGrid(setup.config.raw_hdf5_output_file,
                                                                          report,
                                                                          err)) {
                             std::cout << "  Raw voxel grid   : " << setup.config.raw_hdf5_output_file << "\n";
@@ -140,7 +139,7 @@ int main(int argc, char** argv) {
             }
 
             try {
-                const auto result = pointcloud_compressor::cli::runOptimizeWorkflow(config_path);
+                const auto result = vq_occupancy_compressor::cli::runOptimizeWorkflow(config_path);
 
                 std::cout << "Optimal compression settings:\n";
                 std::cout << "  Voxel size       : " << result.optimal_settings.voxel_size << "\n";

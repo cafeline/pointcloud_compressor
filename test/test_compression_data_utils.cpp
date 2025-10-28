@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
 
-#include "pointcloud_compressor/common/CompressionDataUtils.hpp"
+#include "vq_occupancy_compressor/common/CompressionDataUtils.hpp"
 
 TEST(CompressionDataUtils, BitWidthFromMaxIndex) {
-  using pointcloud_compressor::common::bitWidthFromMaxIndex;
+  using vq_occupancy_compressor::common::bitWidthFromMaxIndex;
 
   EXPECT_EQ(bitWidthFromMaxIndex(0), 1);
   EXPECT_EQ(bitWidthFromMaxIndex(1), 1);
@@ -15,7 +15,7 @@ TEST(CompressionDataUtils, BitWidthFromMaxIndex) {
 }
 
 TEST(CompressionDataUtils, ConvertBlockIndicesToU32) {
-  using pointcloud_compressor::common::convertBlockIndicesToU32;
+  using vq_occupancy_compressor::common::convertBlockIndicesToU32;
   std::vector<uint64_t> src{0, 1, 65535, 1ULL << 33};
   auto converted = convertBlockIndicesToU32(src);
   ASSERT_EQ(converted.size(), src.size());

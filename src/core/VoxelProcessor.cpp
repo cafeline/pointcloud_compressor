@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/core/VoxelProcessor.hpp"
-#include "pointcloud_compressor/model/VoxelGrid.hpp"
+#include "vq_occupancy_compressor/core/VoxelProcessor.hpp"
+#include "vq_occupancy_compressor/model/VoxelGrid.hpp"
 #include <cmath>
 #include <algorithm>
 #include <limits>
@@ -14,7 +14,7 @@
 #include <vector>
 #include <memory>
 
-namespace pointcloud_compressor {
+namespace vq_occupancy_compressor {
 
 VoxelProcessor::VoxelProcessor(float voxel_size, int block_size, int min_points_threshold,
                                float bounding_box_margin_ratio)
@@ -111,7 +111,7 @@ bool VoxelProcessor::voxelizePointCloud(const PointCloud& cloud, VoxelGrid& grid
     
     // For sparse voxel maps, directly set from the count map (already know which are occupied)
     for (const auto& [idx, count] : voxel_count_map) {
-        if (count >= min_points_threshold_) {
+        if (count >= static_cast<uint32_t>(min_points_threshold_)) {
             // Convert linear index back to 3D coordinates
             uint64_t temp = idx;
             int x = temp % grid_x;
@@ -384,4 +384,4 @@ Point3D VoxelProcessor::voxelToPoint(int x, int y, int z, const Point3D& min_pt)
     );
 }
 
-} // namespace pointcloud_compressor
+} // namespace vq_occupancy_compressor

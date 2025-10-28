@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/core/PatternDictionaryBuilder.hpp"
+#include "vq_occupancy_compressor/core/PatternDictionaryBuilder.hpp"
 #include <iostream>
 #include <algorithm>
 #include <chrono>
 
-namespace pointcloud_compressor {
+namespace vq_occupancy_compressor {
 
 PatternDictionaryBuilder::PatternDictionaryBuilder() {}
 
@@ -108,4 +108,4 @@ float PatternDictionaryBuilder::getCompressionRatio() const {
     return static_cast<float>(compressed_bits) / static_cast<float>(original_bits);
 }
 
-} // namespace pointcloud_compressor
+} // namespace vq_occupancy_compressor

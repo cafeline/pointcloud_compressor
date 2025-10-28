@@ -4,7 +4,7 @@
 #include <fstream>
 #include <vector>
 
-#include "pointcloud_compressor/core/PointCloudCompressor.hpp"
+#include "vq_occupancy_compressor/core/VqOccupancyCompressor.hpp"
 
 namespace fs = std::filesystem;
 
@@ -40,7 +40,7 @@ std::vector<fs::path> listDirectoryFiles(const fs::path& dir) {
 }  // namespace
 
 TEST(EndToEnd, CompressInMemoryWithoutTempFiles) {
-  const fs::path temp_dir = fs::temp_directory_path() / fs::path("pointcloud_compressor_e2e");
+  const fs::path temp_dir = fs::temp_directory_path() / fs::path("vq_occupancy_compressor_e2e");
   if (fs::exists(temp_dir)) {
     fs::remove_all(temp_dir);
   }
@@ -48,10 +48,10 @@ TEST(EndToEnd, CompressInMemoryWithoutTempFiles) {
 
   const std::string ply_file = writeTestPointCloud(temp_dir);
 
-  pointcloud_compressor::CompressionSettings settings;
+  vq_occupancy_compressor::CompressionSettings settings;
   settings.voxel_size = 0.1f;
   settings.block_size = 2;
-  pointcloud_compressor::PointCloudCompressor compressor(settings);
+  vq_occupancy_compressor::VqOccupancyCompressor compressor(settings);
 
   auto result = compressor.compress(ply_file);
 

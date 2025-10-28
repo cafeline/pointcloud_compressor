@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/bridge/Bridge.hpp"
+#include "vq_occupancy_compressor/bridge/Bridge.hpp"
 
-#include "pointcloud_compressor/services/CompressionExecutor.hpp"
+#include "vq_occupancy_compressor/services/CompressionExecutor.hpp"
 
 #include <memory>
 #include <string>
@@ -11,11 +11,11 @@
 namespace {
 
 struct CompressionHandleImpl {
-    std::unique_ptr<pointcloud_compressor::services::CompressionExecutor> service;
+    std::unique_ptr<vq_occupancy_compressor::services::CompressionExecutor> service;
     std::string last_error;
 };
 
-CompressionHandleImpl* toImpl(PCCCompressionHandle* handle) {
+CompressionHandleImpl* toImpl(VqoCompressionHandle* handle) {
     return reinterpret_cast<CompressionHandleImpl*>(handle);
 }
 
@@ -43,21 +43,21 @@ PCCCompressionReport makeErrorReport(CompressionHandleImpl* impl, const std::str
 
 }  // namespace
 
-extern "C" PCCCompressionHandle* pcc_handle_create() {
+extern "C" VqoCompressionHandle* vqo_handle_create() {
     auto impl = std::make_unique<CompressionHandleImpl>();
     if (!impl) {
         return nullptr;
     }
 
-    impl->service = std::make_unique<pointcloud_compressor::services::CompressionExecutor>();
+    impl->service = std::make_unique<vq_occupancy_compressor::services::CompressionExecutor>();
     if (!impl->service) {
         return nullptr;
     }
 
-    return reinterpret_cast<PCCCompressionHandle*>(impl.release());
+    return reinterpret_cast<VqoCompressionHandle*>(impl.release());
 }
 
-extern "C" void pcc_handle_destroy(PCCCompressionHandle* handle) {
+extern "C" void vqo_handle_destroy(VqoCompressionHandle* handle) {
     if (!handle) {
         return;
     }
@@ -65,7 +65,7 @@ extern "C" void pcc_handle_destroy(PCCCompressionHandle* handle) {
     delete impl;
 }
 
-extern "C" PCCCompressionReport pcc_handle_compress(PCCCompressionHandle* handle,
+extern "C" PCCCompressionReport vqo_handle_compress(VqoCompressionHandle* handle,
                                                     const PCCCompressionRequest* request) {
     auto* impl = toImpl(handle);
     if (!impl) {
@@ -93,7 +93,7 @@ extern "C" PCCCompressionReport pcc_handle_compress(PCCCompressionHandle* handle
     }
 }
 
-extern "C" void pcc_handle_release_report(PCCCompressionHandle* handle, PCCCompressionReport* report) {
+extern "C" void vqo_handle_release_report(VqoCompressionHandle* handle, PCCCompressionReport* report) {
     if (!handle || !report) {
         return;
     }

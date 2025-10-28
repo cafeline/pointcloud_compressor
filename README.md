@@ -1,4 +1,4 @@
-# pointcloud_compressor: lossless vector-quantized 3D occupancy grid compression for ROS 2 and CLI
+# vq_occupancy_compressor: lossless vector-quantized 3D occupancy grid compression for ROS 2 and CLI
 
 This program performs lossless compression of occupancy grid maps, allowing the compressed map data to be used directly. The maps are compressed using vector quantization. The compressed map retains binary occupied/free data and does not include unknown cells. As input, it supports binary PCD and PLY files, and it runs both on ROS 2 and in a standalone CLI environment.
 
@@ -14,28 +14,28 @@ This program performs lossless compression of occupancy grid maps, allowing the 
 #### ROS2
 ```bash
 mkdir -p ros2_ws && cd ros2_ws
-git clone <repository-url> src/pointcloud_compressor
+git clone <repository-url> src/vq_occupancy_compressor
 rosdep update
 rosdep install -y --from-paths src --ignore-src --rosdistro $ROS_DISTRO
 colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
 source install/setup.bash
-ros2 launch pointcloud_compressor pointcloud_compressor.launch.py
+ros2 launch vq_occupancy_compressor vq_occupancy_compressor.launch.py
 ```
 
 #### CLI
 ```bash
 git clone <repository-url>
-cd pointcloud_compressor
+cd vq_occupancy_compressor
 cmake -S . -B build -DBUILD_TESTING=OFF
-cmake --build build --target pointcloud_compressor_cli
-./build/pointcloud_compressor_cli compress path/to/pointcloud_compressor.yaml
+cmake --build build --target vq_occupancy_compressor_cli
+./build/vq_occupancy_compressor_cli compress path/to/vq_occupancy_compressor_params.yaml
 ```
 
 The CLI expects a single YAML configuration file. The layout matches the ROS 2 parameter files used by the nodes:
 
 ```yaml
-# config/pointcloud_compressor.yaml
-pointcloud_compressor_node:
+# config/vq_occupancy_compressor_params.yaml
+vq_occupancy_compressor_node:
   ros__parameters:
     input_file: /absolute/path/to/map.pcd
     voxel_size: 0.01
@@ -47,7 +47,7 @@ pointcloud_compressor_node:
 To run block-size optimisation from the CLI, provide the optimisation YAML. The optimize command automatically performs a compression pass using the discovered settings and writes artifacts when `save_hdf5`/`save_raw_hdf5` are enabled:
 
 ```bash
-./build/pointcloud_compressor_cli optimize path/to/block_size_optimizer.yaml
+./build/vq_occupancy_compressor_cli optimize path/to/block_size_optimizer.yaml
 ```
 
 The same files can be re-used with the ROS 2 launch configuration.
@@ -63,7 +63,7 @@ The CLI and ROS 2 node writes a HDF5 archive.
 
 ## Nodes
 
-### pointcloud_compressor_node
+### vq_occupancy_compressor_node
 
 Compresses a point cloud file and publishes a PatternDictionary message together with optional voxel markers for visualization. The node leverages the compression bridge library and does not subscribe to sensor streams. It is intended for preprocessing map assets.
 
@@ -78,7 +78,7 @@ Compresses a point cloud file and publishes a PatternDictionary message together
 
 | Name | Type | Description |
 | :--- | :--- | :---------- |
-| `pattern_dictionary` | [`pointcloud_compressor/PatternDictionary`](msg/PatternDictionary.msg) | Detailed compression result including dictionary, indices, and statistics. |
+| `pattern_dictionary` | [`vq_occupancy_compressor/PatternDictionary`](msg/PatternDictionary.msg) | Detailed compression result including dictionary, indices, and statistics. |
 | `occupied_voxel_markers` | [`visualization_msgs/MarkerArray`](http://docs.ros.org/en/api/visualization_msgs/html/msg/MarkerArray.html) | CUBE_LIST markers of occupied voxels (enabled when `publish_occupied_voxel_markers` is true). |
 
 #### Parameters

@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/io/PointCloudIO.hpp"
+#include "vq_occupancy_compressor/io/PointCloudIO.hpp"
 #include <filesystem>
 #include <algorithm>
 
-namespace pointcloud_compressor {
+namespace vq_occupancy_compressor {
 
 bool PointCloudIO::loadPointCloud(const std::string& filename, PointCloud& cloud) {
     cloud.clear();
@@ -132,4 +132,4 @@ std::string PointCloudIO::getErrorMessage(const std::string& operation, const st
     return "Failed to " + operation + " " + format_str + " file: " + filename;
 }
 
-} // namespace pointcloud_compressor
+} // namespace vq_occupancy_compressor

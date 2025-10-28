@@ -1,18 +1,18 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/services/CompressionExecutor.hpp"
+#include "vq_occupancy_compressor/services/CompressionExecutor.hpp"
 
 #include <filesystem>
 #include <stdexcept>
 
-#include "pointcloud_compressor/common/CompressionArtifacts.hpp"
-#include "pointcloud_compressor/common/CompressionDataUtils.hpp"
+#include "vq_occupancy_compressor/common/CompressionArtifacts.hpp"
+#include "vq_occupancy_compressor/common/CompressionDataUtils.hpp"
 
-namespace pointcloud_compressor::services {
+namespace vq_occupancy_compressor::services {
 
 CompressionExecutor::CompressionExecutor()
-    : compressor_(pointcloud_compressor::CompressionSettings()) {
+    : compressor_(vq_occupancy_compressor::CompressionSettings()) {
     clearBuffers();
     last_report_ = makeEmptyReport();
 }
@@ -20,7 +20,7 @@ CompressionExecutor::CompressionExecutor()
 PCCCompressionReport CompressionExecutor::compress(const PCCCompressionRequest& request) {
     clearBuffers();
 
-    pointcloud_compressor::CompressionSettings settings;
+    vq_occupancy_compressor::CompressionSettings settings;
     settings.voxel_size = static_cast<float>(request.voxel_size);
     settings.block_size = request.block_size;
     settings.min_points_threshold = request.min_points_threshold;
@@ -28,7 +28,7 @@ PCCCompressionReport CompressionExecutor::compress(const PCCCompressionRequest& 
 
     compressor_.updateSettings(settings);
 
-    pointcloud_compressor::CompressionResult result;
+    vq_occupancy_compressor::CompressionResult result;
     try {
         result = compressor_.compress(request.input_file);
     } catch (const std::exception& e) {
@@ -49,23 +49,23 @@ PCCCompressionReport CompressionExecutor::compress(const PCCCompressionRequest& 
                                         error_message_);
     last_report_ = report;
 
-    const auto block_indices_u32 = pointcloud_compressor::common::convertBlockIndicesToU32(result.block_indices);
+    const auto block_indices_u32 = vq_occupancy_compressor::common::convertBlockIndicesToU32(result.block_indices);
     map_data_ = report_builder_.toCompressedMapData(result,
                                                     request,
                                                     dictionary_buffer_,
                                                     block_indices_u32);
 
-    pointcloud_compressor::utils::ErrorAccumulator error_acc;
+    vq_occupancy_compressor::utils::ErrorAccumulator error_acc;
     if (request.save_hdf5 && request.hdf5_output_path && request.hdf5_output_path[0] != '\0') {
         std::string err;
-        if (!pointcloud_compressor::io::writeCompressedMap(request.hdf5_output_path, map_data_, err)) {
+        if (!vq_occupancy_compressor::io::writeCompressedMap(request.hdf5_output_path, map_data_, err)) {
             error_acc.add(err);
         }
     }
 
     if (request.save_raw_hdf5 && request.raw_hdf5_output_path && request.raw_hdf5_output_path[0] != '\0') {
         std::string raw_errors;
-        if (!pointcloud_compressor::io::writeRawVoxelGrid(request.raw_hdf5_output_path,
+        if (!vq_occupancy_compressor::io::writeRawVoxelGrid(request.raw_hdf5_output_path,
                                                           result,
                                                           request,
                                                           occupancy_buffer_,
@@ -117,10 +117,10 @@ void CompressionExecutor::clearBuffers() {
     indices_buffer_.clear();
     occupancy_buffer_.clear();
     error_message_.clear();
-    map_data_ = pointcloud_compressor::CompressedMapData{};
+    map_data_ = vq_occupancy_compressor::CompressedMapData{};
 }
 
-bool runCompression(const pointcloud_compressor::config::CompressionSetup& setup,
+bool runCompression(const vq_occupancy_compressor::config::CompressionSetup& setup,
                     const CompressionSuccessCallback& on_success,
                     std::string* error_message) {
     if (!on_success) {
@@ -145,7 +145,7 @@ bool runCompression(const pointcloud_compressor::config::CompressionSetup& setup
         return false;
     }
 
-    pointcloud_compressor::io::CompressionReportBuilder builder;
+    vq_occupancy_compressor::io::CompressionReportBuilder builder;
     try {
         on_success(report, builder);
     } catch (...) {
@@ -157,4 +157,4 @@ bool runCompression(const pointcloud_compressor::config::CompressionSetup& setup
     return true;
 }
 
-}  // namespace pointcloud_compressor::services
+}  // namespace vq_occupancy_compressor::services

@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/model/VoxelGrid.hpp"
+#include "vq_occupancy_compressor/model/VoxelGrid.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 
-namespace pointcloud_compressor {
+namespace vq_occupancy_compressor {
 
 // VoxelBlock implementation
 VoxelBlock::VoxelBlock(int size) : size(size), position(0, 0, 0) {
@@ -38,29 +38,29 @@ bool VoxelBlock::isEmpty() const {
 }
 
 std::vector<uint8_t> VoxelBlock::toBytePattern() const {
-    int total_bits = size * size * size;
-    int total_bytes = (total_bits + 7) / 8;
+    const std::size_t total_bits = static_cast<std::size_t>(size) * static_cast<std::size_t>(size) * static_cast<std::size_t>(size);
+    const std::size_t total_bytes = (total_bits + 7) / 8;
     std::vector<uint8_t> pattern(total_bytes, 0);
-    
-    for (int i = 0; i < total_bits; ++i) {
+
+    for (std::size_t i = 0; i < total_bits; ++i) {
         if (i < voxels_.size() && voxels_[i] != 0) {
-            int byte_index = i / 8;
-            int bit_index = i % 8;
-            pattern[byte_index] |= (1 << bit_index);
+            const std::size_t byte_index = i / 8;
+            const auto bit_index = static_cast<unsigned>(i % 8);
+            pattern[byte_index] |= static_cast<uint8_t>(1u << bit_index);
         }
     }
-    
+
     return pattern;
 }
 
 void VoxelBlock::fromBytePattern(const std::vector<uint8_t>& pattern) {
-    int total_bits = size * size * size;
+    const std::size_t total_bits = static_cast<std::size_t>(size) * static_cast<std::size_t>(size) * static_cast<std::size_t>(size);
     voxels_.assign(total_bits, 0);
-    
-    for (int i = 0; i < total_bits && i / 8 < pattern.size(); ++i) {
-        int byte_index = i / 8;
-        int bit_index = i % 8;
-        if (pattern[byte_index] & (1 << bit_index)) {
+
+    for (std::size_t i = 0; i < total_bits && (i / 8) < pattern.size(); ++i) {
+        const std::size_t byte_index = i / 8;
+        const auto bit_index = static_cast<unsigned>(i % 8);
+        if (pattern[byte_index] & static_cast<uint8_t>(1u << bit_index)) {
             voxels_[i] = 1;
         }
     }
@@ -230,4 +230,4 @@ uint64_t VoxelGrid::indexFromCoord(int x, int y, int z) const {
            static_cast<uint64_t>(x);
 }
 
-} // namespace pointcloud_compressor
+} // namespace vq_occupancy_compressor

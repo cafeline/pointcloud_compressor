@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/io/PlyIO.hpp"
+#include "vq_occupancy_compressor/io/PlyIO.hpp"
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -13,7 +13,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-namespace pointcloud_compressor {
+namespace vq_occupancy_compressor {
 
 bool PlyIO::readPlyFile(const std::string& filename, PointCloud& cloud) {
     auto t0 = std::chrono::high_resolution_clock::now();
@@ -268,7 +268,7 @@ bool PlyIO::readAsciiData(std::ifstream& file, PointCloud& cloud, const PlyHeade
 bool PlyIO::writeHeader(std::ofstream& file, const PointCloud& cloud) {
     file << "ply\n";
     file << "format ascii 1.0\n";
-    file << "comment Created by pointcloud_compressor\n";
+    file << "comment Created by vq_occupancy_compressor\n";
     file << "element vertex " << cloud.size() << "\n";
     file << "property float x\n";
     file << "property float y\n";
@@ -312,25 +312,26 @@ bool PlyIO::isBinaryFormat(const std::string& format) {
 }
 
 bool PlyIO::readBinaryData(std::ifstream& file, PointCloud& cloud, const PlyHeader& header) {
-    cloud.points.reserve(header.vertex_count);
+    const std::size_t vertex_count = header.vertex_count < 0 ? 0 : static_cast<std::size_t>(header.vertex_count);
+    cloud.points.reserve(vertex_count);
     // シンプル実装: x,y,zがfloatで連続している前提（既存テストに整合）
     // 本格実装ではproperty_types/offsetからstride算出が必要
-    const size_t bytes_per_vertex = 3 * sizeof(float);
-    const size_t total_bytes = header.vertex_count * bytes_per_vertex;
+    const std::size_t bytes_per_vertex = 3 * sizeof(float);
+    const std::size_t total_bytes = vertex_count * bytes_per_vertex;
     
     // Allocate buffer for batch reading
-    const size_t buffer_size = std::min(total_bytes, size_t(100 * 1024 * 1024)); // 100MB buffer
-    std::vector<char> buffer(buffer_size);
+    const std::size_t buffer_size = std::min<std::size_t>(total_bytes, 100 * 1024 * 1024); // 100MB buffer
+    std::vector<char> buffer(buffer_size == 0 ? bytes_per_vertex : buffer_size);
     
-    size_t vertices_read = 0;
+    std::size_t vertices_read = 0;
     
-    while (vertices_read < header.vertex_count) {
+    while (vertices_read < vertex_count) {
         // Calculate how many vertices to read in this batch
-        size_t vertices_in_batch = std::min(
-            buffer_size / bytes_per_vertex,
-            size_t(header.vertex_count - vertices_read)
+        const std::size_t vertices_in_batch = std::min(
+            buffer.size() / bytes_per_vertex,
+            vertex_count - vertices_read
         );
-        size_t bytes_to_read = vertices_in_batch * bytes_per_vertex;
+        const std::size_t bytes_to_read = vertices_in_batch * bytes_per_vertex;
         
         // Read batch into buffer
         file.read(buffer.data(), bytes_to_read);
@@ -341,7 +342,7 @@ bool PlyIO::readBinaryData(std::ifstream& file, PointCloud& cloud, const PlyHead
         
         // Process buffer
         const float* float_buffer = reinterpret_cast<const float*>(buffer.data());
-        for (size_t i = 0; i < vertices_in_batch; ++i) {
+        for (std::size_t i = 0; i < vertices_in_batch; ++i) {
             cloud.points.emplace_back(
                 float_buffer[i * 3],
                 float_buffer[i * 3 + 1],
@@ -415,4 +416,4 @@ bool PlyIO::readBinaryDataMmap(const std::string& filename, PointCloud& cloud,
     return true;
 }
 
-} // namespace pointcloud_compressor
+} // namespace vq_occupancy_compressor

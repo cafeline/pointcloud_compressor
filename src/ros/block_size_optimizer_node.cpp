@@ -8,15 +8,15 @@
 #include <std_srvs/srv/trigger.hpp>
 #include <filesystem>
 #include <iomanip>
-#include "pointcloud_compressor/config/CompressorConfig.hpp"
-#include "pointcloud_compressor/config/ConfigTransforms.hpp"
-#include "pointcloud_compressor/core/BlockSizeReportFormatter.hpp"
-#include "pointcloud_compressor/core/PointCloudCompressor.hpp"
-#include "pointcloud_compressor/core/VoxelProcessor.hpp"
-#include "pointcloud_compressor/io/PcdIO.hpp"
-#include "pointcloud_compressor/io/PlyIO.hpp"
+#include "vq_occupancy_compressor/config/CompressorConfig.hpp"
+#include "vq_occupancy_compressor/config/ConfigTransforms.hpp"
+#include "vq_occupancy_compressor/report/ReportUtilities.hpp"
+#include "vq_occupancy_compressor/core/VqOccupancyCompressor.hpp"
+#include "vq_occupancy_compressor/core/VoxelProcessor.hpp"
+#include "vq_occupancy_compressor/io/PcdIO.hpp"
+#include "vq_occupancy_compressor/io/PlyIO.hpp"
 
-namespace pointcloud_compressor {
+namespace vq_occupancy_compressor {
 
 class BlockSizeOptimizerNode : public rclcpp::Node {
 public:
@@ -46,9 +46,9 @@ public:
 
 
         auto base_config = buildBaseConfig();
-        compression_setup_ = pointcloud_compressor::config::buildCompressionSetup(base_config);
+        compression_setup_ = vq_occupancy_compressor::config::buildCompressionSetup(base_config);
 
-        auto errors = pointcloud_compressor::config::validateCompressionSetup(compression_setup_);
+        auto errors = vq_occupancy_compressor::config::validateCompressionSetup(compression_setup_);
         if (!errors.empty()) {
             for (const auto& err : errors) {
                 RCLCPP_ERROR(this->get_logger(), "%s", err.c_str());
@@ -58,7 +58,7 @@ public:
         }
 
         // Initialize compressor
-        compressor_ = std::make_unique<PointCloudCompressor>(compression_setup_.settings);
+        compressor_ = std::make_unique<VqOccupancyCompressor>(compression_setup_.settings);
         
         RCLCPP_INFO(this->get_logger(), 
                     "Block Size Optimizer Node initialized");
@@ -294,7 +294,7 @@ private:
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr optimization_service_;
     
     // Compressor
-    std::unique_ptr<PointCloudCompressor> compressor_;
+    std::unique_ptr<VqOccupancyCompressor> compressor_;
     config::CompressionSetup compression_setup_;
     
     // Store last optimization result for analysis
@@ -401,11 +401,11 @@ private:
     }
 };
 
-} // namespace pointcloud_compressor
+} // namespace vq_occupancy_compressor
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<pointcloud_compressor::BlockSizeOptimizerNode>();
+    auto node = std::make_shared<vq_occupancy_compressor::BlockSizeOptimizerNode>();
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;

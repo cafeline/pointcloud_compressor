@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/io/PcdIO.hpp"
+#include "vq_occupancy_compressor/io/PcdIO.hpp"
 #include <filesystem>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <cmath>
 
-namespace pointcloud_compressor {
+namespace vq_occupancy_compressor {
 
 bool PcdIO::readPcdFile(const std::string& filename, PointCloud& cloud) {
     auto t0 = std::chrono::high_resolution_clock::now();
@@ -291,4 +291,4 @@ bool PcdIO::readBinaryData(std::ifstream& file, PointCloud& cloud, const PcdHead
     return !cloud.points.empty();
 }
 
-} // namespace pointcloud_compressor
+} // namespace vq_occupancy_compressor

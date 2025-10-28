@@ -3,8 +3,8 @@
 #include <filesystem>
 #include <fstream>
 
-#include "pointcloud_compressor/bridge/Bridge.hpp"
-#include "pointcloud_compressor/services/CompressionExecutor.hpp"
+#include "vq_occupancy_compressor/bridge/Bridge.hpp"
+#include "vq_occupancy_compressor/services/CompressionExecutor.hpp"
 
 namespace fs = std::filesystem;
 
@@ -31,14 +31,14 @@ fs::path writeTestPointCloud(const fs::path& dir) {
 }  // namespace
 
 TEST(CompressionExecutor, CompressesRequestAndProvidesReport) {
-  const fs::path temp_dir = fs::temp_directory_path() / "pointcloud_compressor_service_test";
+  const fs::path temp_dir = fs::temp_directory_path() / "vq_occupancy_compressor_service_test";
   if (fs::exists(temp_dir)) {
     fs::remove_all(temp_dir);
   }
   fs::create_directories(temp_dir);
   const fs::path ply_file = writeTestPointCloud(temp_dir);
 
-  pointcloud_compressor::services::CompressionExecutor executor;
+  vq_occupancy_compressor::services::CompressionExecutor executor;
 
   PCCCompressionRequest request{};
   std::string ply_string = ply_file.string();

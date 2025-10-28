@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/config/CompressorConfig.hpp"
+#include "vq_occupancy_compressor/config/CompressorConfig.hpp"
 
 #include <yaml-cpp/yaml.h>
 
 #include <filesystem>
 #include <stdexcept>
 
-namespace pointcloud_compressor::config {
+namespace vq_occupancy_compressor::config {
 
 namespace {
 
@@ -25,8 +25,8 @@ YAML::Node extractParameterNode(const YAML::Node& root) {
         return node;
     }
 
-    if (root["pointcloud_compressor_node"]) {
-        auto node = root["pointcloud_compressor_node"];
+    if (root["vq_occupancy_compressor_node"]) {
+        auto node = root["vq_occupancy_compressor_node"];
         if (node["ros__parameters"]) {
             return node["ros__parameters"];
         }
@@ -133,4 +133,4 @@ CompressionSettings settingsFromConfig(const CompressorConfig& config) {
     return settings;
 }
 
-}  // namespace pointcloud_compressor::config
+}  // namespace vq_occupancy_compressor::config

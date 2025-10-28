@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/io/Hdf5Writers.hpp"
+#include "vq_occupancy_compressor/io/Hdf5Writers.hpp"
 
 #include <filesystem>
 
-#include "pointcloud_compressor/io/HDF5IO.hpp"
-#include "pointcloud_compressor/io/CompressionReportBuilder.hpp"
+#include "vq_occupancy_compressor/io/HDF5IO.hpp"
+#include "vq_occupancy_compressor/report/ReportUtilities.hpp"
 
-namespace pointcloud_compressor::io {
+namespace vq_occupancy_compressor::io {
 
 namespace {
 
@@ -55,7 +55,7 @@ HDF5IO::RawVoxelGridData buildRawGridData(const CompressionResult& result,
 }  // namespace
 
 bool writeCompressedMap(const std::string& output_path,
-                        const pointcloud_compressor::CompressedMapData& data,
+                        const vq_occupancy_compressor::CompressedMapData& data,
                         std::string& error_message) {
     if (output_path.empty()) {
         return false;
@@ -144,4 +144,4 @@ bool writeRawVoxelGrid(const std::string& output_path,
     return true;
 }
 
-}  // namespace pointcloud_compressor::io
+}  // namespace vq_occupancy_compressor::io

@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Ryo Funai
 // SPDX-License-Identifier: Apache-2.0
 
-#include "pointcloud_compressor/io/FileFormatDetector.hpp"
-#include "pointcloud_compressor/io/PcdIO.hpp"
-#include "pointcloud_compressor/io/PlyIO.hpp"
+#include "vq_occupancy_compressor/io/FileFormatDetector.hpp"
+#include "vq_occupancy_compressor/io/PcdIO.hpp"
+#include "vq_occupancy_compressor/io/PlyIO.hpp"
 #include <filesystem>
 #include <algorithm>
 #include <fstream>
 
-namespace pointcloud_compressor {
+namespace vq_occupancy_compressor {
 
 FileFormat FileFormatDetector::detectFormat(const std::string& filename) {
     // Check if file exists first
@@ -62,14 +62,16 @@ FileFormat FileFormatDetector::detectByContent(const std::string& filename) {
     // Read the first few lines to determine format
     std::string line;
     std::vector<std::string> first_lines;
-    int lines_to_read = 5; // Read first 5 lines for analysis
+    constexpr std::size_t lines_to_read = 5; // Read first 5 lines for analysis
     
     while (std::getline(file, line) && first_lines.size() < lines_to_read) {
         // Remove trailing whitespace
-        line.erase(line.find_last_not_of(" \n\r\t") + 1);
-        if (!line.empty()) {
-            first_lines.push_back(line);
+        const auto last_non_ws = line.find_last_not_of(" \n\r\t");
+        if (last_non_ws == std::string::npos) {
+            continue;
         }
+        line.erase(last_non_ws + 1);
+        first_lines.push_back(line);
     }
     
     file.close();
@@ -162,4 +164,4 @@ std::string FileFormatDetector::normalizeExtension(const std::string& extension)
     return normalized;
 }
 
-} // namespace pointcloud_compressor
+} // namespace vq_occupancy_compressor

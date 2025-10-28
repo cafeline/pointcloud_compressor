@@ -1,4 +1,4 @@
-#include "pointcloud_compressor/cli/OptimizeWorkflow.hpp"
+#include "vq_occupancy_compressor/cli/OptimizeWorkflow.hpp"
 
 #include <iostream>
 #include <sstream>
@@ -6,15 +6,13 @@
 #include <string>
 #include <vector>
 
-#include "pointcloud_compressor/config/ConfigTransforms.hpp"
-#include "pointcloud_compressor/core/BlockSizeReportFormatter.hpp"
-#include "pointcloud_compressor/core/CompressionReportFormatter.hpp"
-#include "pointcloud_compressor/io/CompressionReportBuilder.hpp"
-#include "pointcloud_compressor/io/Hdf5Writers.hpp"
-#include "pointcloud_compressor/services/CompressionExecutor.hpp"
-#include "pointcloud_compressor/utils/ErrorAccumulator.hpp"
+#include "vq_occupancy_compressor/config/ConfigTransforms.hpp"
+#include "vq_occupancy_compressor/report/ReportUtilities.hpp"
+#include "vq_occupancy_compressor/io/Hdf5Writers.hpp"
+#include "vq_occupancy_compressor/services/CompressionExecutor.hpp"
+#include "vq_occupancy_compressor/utils/ErrorAccumulator.hpp"
 
-namespace pointcloud_compressor::cli {
+namespace vq_occupancy_compressor::cli {
 
 namespace {
 
@@ -41,7 +39,7 @@ OptimizeWorkflowResult runOptimizeWorkflow(const std::string& config_path) {
   }
 
   CompressionSettings base_settings = config::settingsFromConfig(opt_config.base);
-  PointCloudCompressor compressor(base_settings);
+  VqOccupancyCompressor compressor(base_settings);
 
   CompressionSettings optimal_settings =
       compressor.findOptimalSettings(opt_config.base.input_file);
@@ -76,7 +74,7 @@ OptimizeWorkflowResult runOptimizeWorkflow(const std::string& config_path) {
   const bool compression_success = services::runCompression(
       setup,
       [&](const PCCCompressionReport& report,
-          pointcloud_compressor::io::CompressionReportBuilder& builder) {
+          vq_occupancy_compressor::io::CompressionReportBuilder& builder) {
         compression_summary = formatCompressionSummary(report);
 
         auto map_data = builder.toCompressedMapData(
@@ -84,7 +82,7 @@ OptimizeWorkflowResult runOptimizeWorkflow(const std::string& config_path) {
 
         if (setup.request.save_hdf5 && setup.request.hdf5_output_path) {
           std::string err;
-          if (!pointcloud_compressor::io::writeCompressedMap(
+          if (!vq_occupancy_compressor::io::writeCompressedMap(
                   setup.config.hdf5_output_file, map_data, err)) {
             error_acc.add(err);
           }
@@ -92,7 +90,7 @@ OptimizeWorkflowResult runOptimizeWorkflow(const std::string& config_path) {
 
         if (setup.request.save_raw_hdf5 && setup.request.raw_hdf5_output_path) {
           std::string err;
-          if (!pointcloud_compressor::io::writeRawVoxelGrid(
+          if (!vq_occupancy_compressor::io::writeRawVoxelGrid(
                   setup.config.raw_hdf5_output_file, report, err)) {
             error_acc.add(err);
           }
@@ -118,4 +116,4 @@ OptimizeWorkflowResult runOptimizeWorkflow(const std::string& config_path) {
   return result;
 }
 
-}  // namespace pointcloud_compressor::cli
+}  // namespace vq_occupancy_compressor::cli
