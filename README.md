@@ -44,7 +44,7 @@ vq_occupancy_compressor_node:
     hdf5_output_file: /tmp/compressed_map.h5
     save_raw_hdf5: false
 ```
-To run block-size optimisation from the CLI, provide the optimisation YAML. The optimize command automatically performs a compression pass using the discovered settings and writes artifacts when `save_hdf5`/`save_raw_hdf5` are enabled:
+To run block-size optimisation from the CLI, use the optimisation YAML. The optimize command automatically performs a compression pass using the discovered settings:
 
 ```bash
 ./build/vq_occupancy_compressor_cli optimize path/to/block_size_optimizer.yaml
