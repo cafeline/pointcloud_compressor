@@ -22,27 +22,27 @@ inline void logCompressionSummary(const rclcpp::Logger& logger,
                 metrics.env_y,
                 metrics.env_z);
     RCLCPP_INFO(logger,
-                "Map size at 1 byte/voxel (pre-compression): ~%.2f MB",
+                "Map size at 1 byte/voxel (pre-compression): %.2f MB",
                 bytesToMb(metrics.bytes_one_byte));
     RCLCPP_INFO(logger,
-                "Map size at 1 bit/voxel (pre-compression): ~%.2f MB",
+                "Map size at 1 bit/voxel (pre-compression): %.2f MB",
                 bytesToMb(metrics.bytes_one_bit));
     RCLCPP_INFO(logger,
-                "Index array: ~%zu entries, ~%.2f MB",
+                "Index array: %zu entries, %.2f MB",
                 metrics.index_entries,
                 bytesToMb(metrics.index_bytes));
     RCLCPP_INFO(logger,
-                "Codebook: ~%zu entries, ~%.2f MB",
+                "Codebook: %zu entries, %.2f MB",
                 metrics.dictionary_entries,
                 bytesToMb(metrics.dictionary_bytes));
     RCLCPP_INFO(logger,
-                "Compressed map total: ~%.2f MB",
+                "Compressed map total: %.2f MB",
                 bytesToMb(metrics.compressed_bytes));
     RCLCPP_INFO(logger,
-                "Compression ratio vs 1 byte/voxel: ~%.6f",
+                "Compression ratio vs 1 byte/voxel: %.6f",
                 metrics.ratio_vs_one_byte);
     RCLCPP_INFO(logger,
-                "Compression ratio vs 1 bit/voxel: ~%.6f",
+                "Compression ratio vs 1 bit/voxel: %.6f",
                 metrics.ratio_vs_one_bit);
 }
 

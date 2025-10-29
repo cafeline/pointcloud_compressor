@@ -3,6 +3,7 @@
 
 #include "vq_occupancy_compressor/utils/CompressionSummary.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 #include "vq_occupancy_compressor/model/VoxelGrid.hpp"
@@ -62,15 +63,20 @@ inline double safeVoxelSize(float value, double fallback) {
 CompressionSummaryMetrics computeSummaryMetrics(const CompressionResult& result) {
     const VoxelGrid& grid = result.voxel_grid;
     const VoxelCoord dims = grid.getDimensions();
-    const std::size_t total_voxels =
-        static_cast<std::size_t>(dims.x) *
-        static_cast<std::size_t>(dims.y) *
-        static_cast<std::size_t>(dims.z);
-
     const double voxel_size = safeVoxelSize(result.voxel_size, 0.0);
-    const double env_x = dims.x * voxel_size;
-    const double env_y = dims.y * voxel_size;
-    const double env_z = dims.z * voxel_size;
+
+    std::size_t coverage_x = static_cast<std::size_t>(result.blocks_count.x) * static_cast<std::size_t>(result.block_size);
+    std::size_t coverage_y = static_cast<std::size_t>(result.blocks_count.y) * static_cast<std::size_t>(result.block_size);
+    std::size_t coverage_z = static_cast<std::size_t>(result.blocks_count.z) * static_cast<std::size_t>(result.block_size);
+
+    coverage_x = std::max<std::size_t>(coverage_x, static_cast<std::size_t>(dims.x));
+    coverage_y = std::max<std::size_t>(coverage_y, static_cast<std::size_t>(dims.y));
+    coverage_z = std::max<std::size_t>(coverage_z, static_cast<std::size_t>(dims.z));
+
+    const std::size_t total_voxels = coverage_x * coverage_y * coverage_z;
+    const double env_x = static_cast<double>(coverage_x) * voxel_size;
+    const double env_y = static_cast<double>(coverage_y) * voxel_size;
+    const double env_z = static_cast<double>(coverage_z) * voxel_size;
 
     std::size_t dictionary_bytes = 0;
     for (const auto& pattern : result.pattern_dictionary) {
@@ -99,11 +105,45 @@ CompressionSummaryMetrics computeSummaryMetrics(const CompressionResult& result)
 }
 
 CompressionSummaryMetrics computeSummaryMetrics(const PCCCompressionReport& report) {
-    const std::size_t total_voxels = report.occupancy.size;
+    const double voxel_size = safeVoxelSize(static_cast<float>(report.grid.voxel_size), 0.0);
 
-    const double env_x = report.grid.dimensions[0];
-    const double env_y = report.grid.dimensions[1];
-    const double env_z = report.grid.dimensions[2];
+    std::size_t block_size = 0;
+    if (report.dictionary.pattern_size_bytes > 0) {
+        const double pattern_bits = static_cast<double>(report.dictionary.pattern_size_bytes) * 8.0;
+        block_size = static_cast<std::size_t>(std::llround(std::cbrt(pattern_bits)));
+    }
+    if (block_size == 0) {
+        block_size = 1;
+    }
+
+    auto coverage_from_blocks = [&](int index) {
+        return static_cast<std::size_t>(report.grid.blocks_per_axis[index]) * block_size;
+    };
+
+    std::size_t coverage_x = coverage_from_blocks(0);
+    std::size_t coverage_y = coverage_from_blocks(1);
+    std::size_t coverage_z = coverage_from_blocks(2);
+
+    if (voxel_size > 0.0) {
+        coverage_x = std::max<std::size_t>(coverage_x,
+            static_cast<std::size_t>(std::llround(report.grid.dimensions[0] / voxel_size)));
+        coverage_y = std::max<std::size_t>(coverage_y,
+            static_cast<std::size_t>(std::llround(report.grid.dimensions[1] / voxel_size)));
+        coverage_z = std::max<std::size_t>(coverage_z,
+            static_cast<std::size_t>(std::llround(report.grid.dimensions[2] / voxel_size)));
+    }
+
+    if (coverage_x == 0) coverage_x = 1;
+    if (coverage_y == 0) coverage_y = 1;
+    if (coverage_z == 0) coverage_z = 1;
+
+    const std::size_t total_voxels = coverage_x * coverage_y * coverage_z;
+    const double env_x = voxel_size > 0.0 ? static_cast<double>(coverage_x) * voxel_size
+                                          : report.grid.dimensions[0];
+    const double env_y = voxel_size > 0.0 ? static_cast<double>(coverage_y) * voxel_size
+                                          : report.grid.dimensions[1];
+    const double env_z = voxel_size > 0.0 ? static_cast<double>(coverage_z) * voxel_size
+                                          : report.grid.dimensions[2];
 
     const std::size_t dictionary_entries = report.dictionary.num_patterns;
     const std::size_t dictionary_bytes = report.dictionary.size;
