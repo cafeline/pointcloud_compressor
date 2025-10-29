@@ -15,7 +15,7 @@ namespace vq_occupancy_compressor::ros {
 inline std::string buildOptimizationSummaryJson(int optimal_block_size,
                                                 const utils::CompressionSummaryMetrics& metrics) {
     const auto bytesToMb = [](std::size_t bytes) {
-        return static_cast<double>(bytes) / (1024.0 * 1024.0);
+        return static_cast<double>(bytes) / 1'000'000.0;
     };
 
     std::ostringstream ss;

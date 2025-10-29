@@ -13,7 +13,7 @@ namespace vq_occupancy_compressor::ros {
 inline void logCompressionSummary(const rclcpp::Logger& logger,
                                   const utils::CompressionSummaryMetrics& metrics) {
     const auto bytesToMb = [](std::size_t bytes) {
-        return static_cast<double>(bytes) / (1024.0 * 1024.0);
+        return static_cast<double>(bytes) / 1'000'000.0;
     };
 
     RCLCPP_INFO(logger,
